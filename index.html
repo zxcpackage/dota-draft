@@ -532,7 +532,7 @@ function renderGrid(){
     let cls = "tile" + (off?" off":"");
     if (!off && !firstMarked && $("#search").value.trim()) { cls += " first"; firstMarked = true; }
     const wr = st.p ? `<span class="${st.wr>=50?"good":"bad"}">${st.wr.toFixed(1)}%</span>` : `<span class="small">нет данных</span>`;
-    html += `<button class="${cls}" data-act="add" data-id="${h.id}" title="${esc(h.name)} — позиции ${posOf(h).join(", ")}">${pic(h)}<span class="tn">${esc(h.name)}</span><span class="tw">${tierBadge(ctx.tier0[h.id])} ${wr}</span></button>`;
+    html += `<button class="${cls}" data-act="add" data-id="${h.id}" title="${esc(h.name)} — позиции ${posOf(h).join(", ")}. Здесь общий винрейт героя на всех позициях; в советах — винрейт на конкретной позиции.">${pic(h)}<span class="tn">${esc(h.name)}</span><span class="tw">${tierBadge(ctx.tier0[h.id])} ${wr}</span></button>`;
   }
   $("#grid").innerHTML = html || `<div class="small">Никого не нашёл</div>`;
 }
@@ -564,11 +564,12 @@ function context(){
 // p = 0 — общий по герою, p = 1..5 — на конкретной позиции (если есть данные STRATZ по позициям).
 function metaFor(h, p, ctx){
   if (p && ctx.sp){
+    // Есть статистика по позициям — используем ТОЛЬКО её. Если на этой позиции у героя мало игр,
+    // героя на неё не предлагаем (общий винрейт героя на позицию не подставляется никогда).
     const x = SP.heroes[h.id] && SP.heroes[h.id][p-1];
-    if (x && x[0] >= 100){
-      const wr = x[1]/x[0]*100, rel = x[0]/ctx.posMean[p];
-      return {wr, m:x[0], pts:(wr-50) + 1.5*clamp(Math.log2(rel),-2,2), positional:true};
-    }
+    if (!x || x[0] < settings.minGames) return null;
+    const wr = x[1]/x[0]*100, rel = x[0]/ctx.posMean[p];
+    return {wr, m:x[0], pts:(wr-50) + 1.5*clamp(Math.log2(rel),-2,2), positional:true};
   }
   const st = ctx.st[h.id];
   if (!st || st.p < 30) return null;
@@ -589,7 +590,7 @@ function score(h, p, ctx, tier){
   const wr = mt.wr, base = ctx.st[h.id] ? ctx.st[h.id].wr : wr;
   let pts = mt.pts;
   const why = [], hard = [];
-  why.push({t:`WR ${wr.toFixed(1)}%${mt.positional?" на этой позиции":""}`,k:wr>=50?"good":"bad"});
+  why.push({t:mt.positional ? `WR ${wr.toFixed(1)}% на поз. ${p}` : `WR ${wr.toFixed(1)}% (общий, без разбивки по позициям)`,k:wr>=50?"good":"bad"});
   why.push({t:`${fmt(mt.m)} игр`,k:""});
   if (ctx.sz){
     state.enemy.forEach((e,k)=>{
@@ -891,9 +892,18 @@ const DRAFT_K = 0.45;
 function analyzeDraft(ctx){
   const wr = id => (ctx.st[id] && ctx.st[id].p ? ctx.st[id].wr : 50)/100;
   const O = state.ours.map(x=>x.id), E = state.enemy.map(x=>x.id);
+  const PO0 = teamProbs("ours"), PE0 = teamProbs("enemy");
+  // винрейт героя с учётом позиции: средний по позициям, взвешенный вероятностью (у наших позиция обычно точная)
+  const wrPos = (id, P) => {
+    const arr = ctx.sp && SP.heroes[id];
+    if (!arr) return wr(id);
+    let s = 0, q = 0;
+    P.forEach((pq,i)=>{ const x = arr[i]; if (pq > 0 && x && x[0] >= settings.minGames){ s += pq*x[1]/x[0]; q += pq; } });
+    return q >= 0.5 ? s/q : wr(id);
+  };
   let meta = 0;
-  for (const a of O) meta += L(wr(a));
-  for (const b of E) meta -= L(wr(b));
+  O.forEach((a,i)=>{ meta += L(wrPos(a, PO0[i])); });
+  E.forEach((b,i)=>{ meta -= L(wrPos(b, PE0[i])); });
   let syn = 0, ctr = 0, synN = 0, ctrN = 0;
   if (ctx.sz){
     const team = (T, sign) => {
