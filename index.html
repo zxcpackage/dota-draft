@@ -115,6 +115,14 @@ details.notes{margin-bottom:8px}
 details.notes summary{cursor:pointer;color:var(--muted);font-size:12px;margin-bottom:6px}
 .rec.threat{cursor:default;border-color:#4a2a28}
 .rec.threat:hover{border-color:#4a2a28}
+.tabs{display:flex;flex-wrap:wrap;gap:4px;margin-bottom:8px}
+.tabs button{font-size:12.5px;padding:5px 10px;border-radius:8px;background:#12151b}
+.tabs button.on{background:var(--gold);color:#1a1405;border-color:var(--gold);font-weight:700}
+.sorts{display:flex;flex-wrap:wrap;gap:4px;align-items:center;margin-bottom:8px}
+.sorts button{font-size:11.5px;padding:3px 9px;border-radius:999px;background:#12151b}
+.sorts button.on{background:#2c3c66;border-color:var(--tag);color:#dfe8ff;font-weight:700}
+.sorts button:disabled{opacity:.4;cursor:not-allowed}
+.sub-h{margin:6px 0 4px}
 .chip.hard{color:#1a1405;background:var(--gold);border-color:var(--gold);font-weight:700}
 .empty-recs{color:var(--muted);font-size:13px;padding:6px 0}
 .err{color:var(--bad);padding:20px;text-align:center}
@@ -378,7 +386,7 @@ settings.tags = Object.assign({}, DEFAULTS.tags, settings.tags||{});
 // переход на новые значения по умолчанию у тех, у кого уже сохранены старые настройки
 if ((settings.v||1) < 2){ settings.threatMin = 1000; settings.v = 2; }
 if (settings.v < 3){ settings.patchDate = ""; settings.patchKind = "any"; settings.v = 3; } // дата патча теперь определяется сама
-let state = Object.assign({ours:[],enemy:[],bans:[],mode:"ours",pairPos:"any",synPos:"any"}, LS.get("draft",{}));
+let state = Object.assign({ours:[],enemy:[],bans:[],mode:"ours",pairPos:"any",recPos:"any",recSort:"total"}, LS.get("draft",{}));
 let H = {}, LIST = [], heroStatsMeta = null, SZ = null, SP = null, SD = null, PST = null, LN = null, TD = null, SZKEY = null, SZP = null, LNP = null, PAIR_BETA = 0, LANE_BETA = 0;
 const szCache = {};
 
@@ -698,7 +706,7 @@ function renderRecs(){
   const taken = new Set(state.ours.map(x=>x.pos).filter(Boolean));
   const open = [1,2,3,4,5].filter(p=>!taken.has(p));
   const un = unavailable();
-  const per = {}, best = {};
+  const per = {};
   ctx.threats = enemyThreats(ctx);
   {
     const byId = {};
@@ -717,38 +725,53 @@ function renderRecs(){
     }
     arr.sort((a,b)=>b.pts-a.pts);
     per[p] = arr;
-    for (const r of arr) if (!best[r.h.id] || best[r.h.id].pts < r.pts) best[r.h.id] = r;
   }
-  const top = Object.values(best).sort((a,b)=>b.pts-a.pts).slice(0,5);
-  let html = `<div class="openpos">Свободные позиции: ${open.map(p=>`<b>${p}</b> ${POS_NAME[p]}`).join(" · ")}</div>`;
-  html += `<h3>Лучший пик сейчас</h3>` + (top.length ? top.map(recCard).join("") : `<div class="empty-recs">Нет подходящих героев.</div>`);
+  // ---------- один список советов: вкладка позиции + сортировка ----------
+  const tab = open.includes(+state.recPos) ? +state.recPos : "any";
+  const canSyn = ctx.sz && state.ours.length > 0, canCtr = ctx.sz && state.enemy.length > 0;
+  let sort = state.recSort || "total";
+  if ((sort === "syn" && !canSyn) || (sort === "ctr" && !canCtr)) sort = "total";
+  const synVal = r => { let s = 0, n = 0;
+    for (const a of state.ours){ const pr = pair(r.h.id,a.id,"w"); if (!pr || pr.m < settings.minGames) continue;
+      s += pr.wr - (ctx.st[r.h.id].wr + (ctx.st[a.id] ? ctx.st[a.id].wr : 50) - 50); n++; }
+    return n ? s : null; };
+  const ctrVal = r => { let s = 0, n = 0;
+    state.enemy.forEach((e,k)=>{ const pr = pair(r.h.id,e.id,"v"); if (!pr || pr.m < settings.minGames) return;
+      s += (pr.wr - ctx.st[r.h.id].wr) * (r.p===2 ? 1 + 0.5*ctx.enemyP[k][1] : 1); n++; });
+    return n ? s : null; };
+  const pool = {};
+  for (const p of (tab === "any" ? open : [tab])) for (const r of per[p]){
+    let v = r.pts, extra = null;
+    if (sort === "syn"){ const x = synVal(r); if (x == null || x <= 0) continue; v = x*1.5 + r.pts*0.3; extra = {t:`синергия с нашими +${x.toFixed(1)}%`,k:"good"}; }
+    if (sort === "ctr"){ const x = ctrVal(r); if (x == null || x <= 0) continue; v = x*1.5 + r.pts*0.3; extra = {t:`против врагов +${x.toFixed(1)}%`,k:"good"}; }
+    if (!pool[r.h.id] || pool[r.h.id].v < v) pool[r.h.id] = {...r, v, extra};
+  }
+  const list = Object.values(pool).sort((a,b)=>b.v-a.v).slice(0, settings.perPos);
+  let html = `<div class="tabs">` + ["any",...open].map(k=>`<button class="${String(tab)===String(k)?"on":""}" data-act="recpos" data-k="${k}">${k==="any"?"Любая позиция":k+" · "+POS_NAME[k]}</button>`).join("") + `</div>`;
+  const sortBtn = (k, label, ok, why) => `<button class="${sort===k?"on":""}" data-act="recsort" data-k="${k}" ${ok?"":`disabled title="${why}"`}>${label}</button>`;
+  html += `<div class="sorts"><span class="small">Сортировка:</span>` +
+    sortBtn("total","общая оценка",true,"") +
+    sortBtn("syn","синергия с нашими",canSyn, ctx.sz ? "Сначала возьми хотя бы одного героя" : "Нужны данные STRATZ") +
+    sortBtn("ctr","против врагов",canCtr, ctx.sz ? "Сначала добавь хотя бы одного врага" : "Нужны данные STRATZ") + `</div>`;
+  const recWithExtra = r => { const c = {...r, why: r.extra ? [r.extra, ...r.why] : r.why}; return recCard(c); };
+  html += list.length ? list.map(recWithExtra).join("")
+    : `<div class="empty-recs">${sort==="syn" ? "Нет героев с хорошей синергией с нашими на этой позиции." : sort==="ctr" ? "Нет героев, которые заметно контрят врагов на этой позиции." : "Нет героев с WR от 50% на эту позицию."}</div>`;
+
+  // ---------- пары — только для самого первого двойного пика ----------
   if (state.ours.length === 0 && open.length >= 2){
     const pairs = bestPairs(per, open, ctx);
     const keys = ["any"]; for (let i=0;i<open.length;i++) for (let j=i+1;j<open.length;j++) keys.push(open[i]+"-"+open[j]);
     const cur = keys.includes(state.pairPos) ? state.pairPos : "any";
-    html += `<h3>Лучшие пары на двойной пик</h3><div class="pairpos">` + keys.map(k=>`<button class="${cur===k?"on":""}" data-act="pairpos" data-k="${k}">${k==="any"?"любые позиции":"поз. "+k.replace("-"," + ")}</button>`).join("") + `</div>`;
-    html += pairs.length ? pairs.map(pairCard).join("") : `<div class="empty-recs">Нет подходящих пар.</div>`;
+    html += `<h3>Лучшие пары на первый двойной пик</h3><div class="pairpos">` + keys.map(k=>`<button class="${cur===k?"on":""}" data-act="pairpos" data-k="${k}">${k==="any"?"любые позиции":"поз. "+k.replace("-"," + ")}</button>`).join("") + `</div>`;
+    html += pairs.length ? pairs.slice(0,3).map(pairCard).join("") : `<div class="empty-recs">Нет подходящих пар.</div>`;
   }
-  if (state.ours.length && ctx.sz){
-    const cur = open.includes(+state.synPos) ? +state.synPos : "any";
-    const syn = bestSynergy(per, cur === "any" ? open : [cur], ctx);
-    const names = state.ours.map(x=>H[x.id]?H[x.id].name:"").filter(Boolean).join(", ");
-    html += `<h3>Лучше всего сочетаются с: ${esc(names)}</h3><div class="pairpos">` +
-      ["any",...open].map(k=>`<button class="${String(cur)===String(k)?"on":""}" data-act="synpos" data-k="${k}">${k==="any"?"любая позиция":"поз. "+k+" · "+POS_NAME[k]}</button>`).join("") + `</div>` +
-      (syn.length ? syn.map(recCard).join("") : `<div class="empty-recs">Нет героев с синергией на ${fmt(settings.minGames)}+ играх.</div>`);
-  }
-  if (ctx.threats.length){
-    html += `<h3>Опасные пики врага — контрят наших</h3>` + ctx.threats.map(t=>threatCard(t,ctx,open)).join("");
-  } else if (state.ours.length && ctx.sz && state.enemy.length < 5){
-    html += `<h3>Опасные пики врага — контрят наших</h3><div class="empty-recs">Явных контрпиков (от ${fmt(settings.threatMin)} игр, винрейт ниже 49%) не нашёл.</div>`;
-  }
-  if (ctx.metaLikely && ctx.metaLikely.length){
-    html += `<h3>Популярные пики врага</h3><div class="likely">` + ctx.metaLikely.slice(0,6).map(x=>`<div class="lk">${pic(x.h)}<div><div>${esc(x.h.name)}</div><div class="small">поз. ${x.p}</div></div></div>`).join("") + `</div><div class="small">Советы учитывают, как герой стоит против опасных и популярных пиков врага.</div>`;
-  }
-  for (const p of open){
-    html += `<h3>Позиция ${p} — ${POS_NAME[p]}</h3>`;
-    const list = per[p].slice(0,settings.perPos);
-    html += list.length ? list.map(recCard).join("") : `<div class="empty-recs">Нет героев с WR от 50% на эту позицию.</div>`;
+
+  // ---------- чего ждать от врага ----------
+  const popular = (ctx.metaLikely||[]).slice(0,6);
+  if (ctx.threats.length || popular.length){
+    html += `<h3>Чего ждать от врага</h3>`;
+    if (ctx.threats.length) html += `<div class="small sub-h">Контрят наших (от ${fmt(settings.threatMin)} игр):</div>` + ctx.threats.slice(0,5).map(t=>threatCard(t,ctx,open)).join("");
+    if (popular.length) html += `<div class="small sub-h">Популярны у врага на свободных позициях:</div><div class="likely">` + popular.map(x=>`<div class="lk">${pic(x.h)}<div><div>${esc(x.h.name)}</div><div class="small">поз. ${x.p}</div></div></div>`).join("") + `</div>`;
   }
   $("#recs").innerHTML = html;
 }
@@ -892,22 +915,6 @@ function bestPairs(per, open, ctx){
   }
   return res;
 }
-// Кандидаты, у которых лучшая синергия с уже взятыми нашими героями (с учётом меты на своей позиции).
-function bestSynergy(per, open, ctx){
-  const best = {};
-  for (const p of open) for (const r of per[p]){
-    let syn = 0, n = 0;
-    for (const a of state.ours){
-      const pr = pair(r.h.id, a.id, "w"); if (!pr || pr.m < settings.minGames) continue;
-      syn += pr.wr - (ctx.st[r.h.id].wr + (ctx.st[a.id] ? ctx.st[a.id].wr : 50) - 50); n++;
-    }
-    if (!n || syn <= 0) continue;
-    const v = syn*1.5 + r.pts*0.3;
-    if (!best[r.h.id] || best[r.h.id].v < v) best[r.h.id] = {...r, v, synSum:syn};
-  }
-  return Object.values(best).sort((a,b)=>b.v-a.v).slice(0,5);
-}
-
 function pairCard(x){
   const one = r => `<div class="pp">${pic(r.h)}<div class="pc"><div>${tierBadge(r.tier)}<b>${esc(r.h.name)}</b></div><div class="small">поз. ${r.p} · WR ${r.wr.toFixed(1)}%</div></div></div>`;
   const syn = x.syn == null ? `<span class="chip">синергия: мало игр</span>` : `<span class="chip ${x.syn>=1?"good":x.syn<=-1?"bad":""}">синергия пары ${x.syn>=0?"+":""}${x.syn.toFixed(1)}%</span>`;
@@ -1280,7 +1287,8 @@ document.addEventListener("click", e=>{
   else if (act === "rm") removeHero(b.dataset.team, +b.dataset.i);
   else if (act === "pos") setPos(b.dataset.team, +b.dataset.i, +b.dataset.p);
   else if (act === "pairpos"){ state.pairPos = b.dataset.k; save(); renderRecs(); }
-  else if (act === "synpos"){ state.synPos = b.dataset.k; save(); renderRecs(); }
+  else if (act === "recpos"){ state.recPos = b.dataset.k; save(); renderRecs(); }
+  else if (act === "recsort"){ state.recSort = b.dataset.k; save(); renderRecs(); }
   else if (act === "pickpair"){ addHero(+b.dataset.a, "ours", +b.dataset.pa); addHero(+b.dataset.b, "ours", +b.dataset.pb); }
 });
 $("#modes").addEventListener("click", e=>{
