@@ -170,7 +170,13 @@ details.notes summary{cursor:pointer;color:var(--muted);font-size:12px;margin-bo
       <option value="30">30 дней</option>
     </select>
   </label>
-  <label>Дата выхода патча (для «С начала патча»)
+  <label>Новым патчем считать (определяется автоматически)
+    <select id="setPatchKind">
+      <option value="any">любой, включая буквенные (7.42a, 7.42b…)</option>
+      <option value="major">только крупные (7.42, 7.43…)</option>
+    </select>
+  </label>
+  <label>Дата патча вручную — только если автоматика ошиблась (пусто = авто)
     <input type="date" id="setPatchDate">
   </label>
   <label>Где лежат данные STRATZ (папка или ссылка)
@@ -349,7 +355,7 @@ const STRATZ_BRACKET = {all:"ALL","1":"HERALD_GUARDIAN","2":"HERALD_GUARDIAN","3
 const STRATZ_LABEL = {ALL:"все ранги",HERALD_GUARDIAN:"Рекрут–Страж",CRUSADER_ARCHON:"Рыцарь–Герой",LEGEND_ANCIENT:"Легенда–Властелин",DIVINE_IMMORTAL:"Божество–Титан"};
 const POS_NAME = {1:"Керри",2:"Мид",3:"Оффлейн",4:"Семи-саппорт",5:"Фулл-саппорт"};
 const TAG_NAME = {p:"урон по башням",g:"глобалка",r:"быстрый Рошан",l:"сильная линия"};
-const DEFAULTS = {rank:"7",minGames:150,hard:true,hardWr:55,tags:{p:true,g:true,r:true,l:true},offrole:false,perPos:5,threatMin:1000,dataUrl:"data",period:"patch",patchDate:"2026-11-19"};
+const DEFAULTS = {rank:"7",minGames:150,hard:true,hardWr:55,tags:{p:true,g:true,r:true,l:true},offrole:false,perPos:5,threatMin:1000,dataUrl:"data",period:"patch",patchDate:"",patchKind:"any"};
 
 const LS = {
   get(k,d){try{const v=localStorage.getItem("dd_"+k);return v?JSON.parse(v):d}catch(e){return d}},
@@ -359,7 +365,7 @@ const $ = s => document.querySelector(s);
 const esc = s => String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const norm = s => String(s).toLowerCase().replace(/ё/g,"е").replace(/[\s\-'’_.]/g,"");
 const clamp = (x,a,b) => Math.max(a,Math.min(b,x));
-const fmt = n => n.toLocaleString("ru-RU");
+const fmt = n => Math.round(n).toLocaleString("ru-RU");
 
 const INFO = {};
 for (const line of HERO_TABLE.trim().split("\n")){
@@ -371,8 +377,9 @@ let settings = Object.assign({}, DEFAULTS, LS.get("settings2",{}));
 settings.tags = Object.assign({}, DEFAULTS.tags, settings.tags||{});
 // переход на новые значения по умолчанию у тех, у кого уже сохранены старые настройки
 if ((settings.v||1) < 2){ settings.threatMin = 1000; settings.v = 2; }
-let state = Object.assign({ours:[],enemy:[],bans:[],mode:"ours",pairPos:"any"}, LS.get("draft",{}));
-let H = {}, LIST = [], heroStatsMeta = null, SZ = null, SP = null, SD = null, PST = null, LN = null, TD = null, SZKEY = null;
+if (settings.v < 3){ settings.patchDate = ""; settings.patchKind = "any"; settings.v = 3; } // дата патча теперь определяется сама
+let state = Object.assign({ours:[],enemy:[],bans:[],mode:"ours",pairPos:"any",synPos:"any"}, LS.get("draft",{}));
+let H = {}, LIST = [], heroStatsMeta = null, SZ = null, SP = null, SD = null, PST = null, LN = null, TD = null, SZKEY = null, SZP = null, LNP = null, PAIR_BETA = 0, LANE_BETA = 0;
 const szCache = {};
 
 function save(){ LS.set("draft",state); LS.set("settings2",settings); }
@@ -407,7 +414,7 @@ function buildHeroes(data){
     const short = String(d.name||"").replace("npc_dota_hero_","");
     const info = INFO[short];
     const name = d.localized_name || short;
-    const h = {id:d.id,name,short,img:d.img?IMG_HOST+d.img:"",pos:info?info.pos:posFromRoles(d.roles),tags:info?info.tags:"",raw:d,known:!!info};
+    const h = {id:d.id,name,short,img:d.img?IMG_HOST+d.img:"",pos:info?info.pos:posFromRoles(d.roles),tags:info?info.tags:"",tagsManual:info?info.tags:"",raw:d,known:!!info};
     h.keys = [name, short, ...(info?info.al:[])].map(norm);
     h.initials = name.split(/[\s-]+/).map(w=>w[0]).join("").slice(0,3).toUpperCase();
     H[d.id] = h; LIST.push(h);
@@ -427,13 +434,20 @@ function rawStat(h){
   return {p,w,wr:p?w/p*100:0};
 }
 
-function pair(a,b,kind){
-  if (!SZ || !SZ.heroes) return null;
-  const A = SZ.heroes[a]; let x = A && A[kind] && A[kind][b];
-  if (x && x[0]) return {m:x[0],wr:x[1]/x[0]*100};
-  const B = SZ.heroes[b]; x = B && B[kind] && B[kind][a];
-  if (x && x[0]) return {m:x[0],wr:kind==="v"?100-x[1]/x[0]*100:x[1]/x[0]*100};
+// [игры, победы героя a] из одной выборки
+function pairRaw(S, a, b, kind){
+  if (!S || !S.heroes) return null;
+  let x = S.heroes[a] && S.heroes[a][kind] && S.heroes[a][kind][b];
+  if (x && x[0]) return [x[0], x[1]];
+  x = S.heroes[b] && S.heroes[b][kind] && S.heroes[b][kind][a];
+  if (x && x[0]) return [x[0], kind==="v" ? x[0]-x[1] : x[1]];
   return null;
+}
+// Текущая недельная выборка STRATZ + прошлая с весом PAIR_BETA (доля, которой не хватает текущей до полной недели)
+function pair(a,b,kind){
+  const c = pairRaw(SZ,a,b,kind), p = PAIR_BETA > 0 ? pairRaw(SZP,a,b,kind) : null;
+  const m = (c?c[0]:0) + (p?PAIR_BETA*p[0]:0), w = (c?c[1]:0) + (p?PAIR_BETA*p[1]:0);
+  return m ? {m:Math.round(m), wr:w/m*100} : null;
 }
 
 function pic(h, cls){
@@ -659,14 +673,20 @@ function renderRecs(){
   notes.push(`Мета по рангу «${rankName}». Тир S/A/B/C/D — как на d2pt: винрейт плюс популярность.`);
   if (PST){
     const f = d => new Date(d*1000).toLocaleDateString("ru-RU",{day:"2-digit",month:"2-digit",timeZone:"UTC"});
-    if (PST.fallback) notes.push(`За выбранный период у STRATZ ещё нет данных — пока показываю последние ${PST.n} дн. (${f(PST.from)}–${f(PST.to)}).`);
+    if (PST.patch){
+      const pc = Math.round(PST.patch.share*100);
+      const pd = new Date(PST.patch.ts*1000).toLocaleDateString("ru-RU",{day:"2-digit",month:"2-digit"});
+      notes.push(`Патч ${PST.patch.name} от ${pd}` + (PST.patch.auto ? " — определён автоматически с сайта Dota 2." : "."));
+      notes.push(pc >= 100 ? `Статистика только по новому патчу (${PST.patch.newDays} дн.).`
+        : `Новый патч набрал ${pc}% выборки (${PST.patch.newDays} дн.). Остальное — ${PST.patch.oldDays} дн. до патча; их вес уменьшается каждый день, пока новый патч не наберёт полную неделю игр.`);
+    }
     else notes.push(`Статистика STRATZ за ${PST.n} дн. (${f(PST.from)}–${f(PST.to)}).` + (PST.n <= 2 ? " Дней мало — цифры пока шумные." : ""));
   } else if (SD) notes.push("За выбранный период у STRATZ пока нет данных — показываю OpenDota.");
   else notes.push("Мета пока от OpenDota за её стандартный период (может включать старый патч). Выбор периода заработает после подключения STRATZ.");
   if (ctx.sp) notes.push("Винрейт по позициям: STRATZ. Позиции героев тоже берутся из реальных игр.");
   else notes.push("Пока винрейт общий по герою, без разделения по позициям. По позициям появится после подключения STRATZ.");
   if (!ctx.sz) notes.push("Контрпики и синергия пока выключены: нет данных STRATZ.");
-  else notes.push(`Пары героев: STRATZ (${STRATZ_LABEL[SZKEY]||SZKEY}), учитываю только пары от ${fmt(settings.minGames)} игр.`);
+  else notes.push(`Пары героев: STRATZ (${STRATZ_LABEL[SZKEY]||SZKEY}), учитываю только пары от ${fmt(settings.minGames)} игр.` + (PAIR_BETA > 0.01 ? ` Текущая неделя STRATZ набрала ${Math.round((1-PAIR_BETA)*100)}% выборки — недостающее берётся из прошлой недели.` : ""));
   if (settings.rank === "pro") notes.push("На про-сцене мало игр, винрейты шумные. Для пабов лучше выбрать свой ранг.");
   notes.push(settings.hard ? `Герои с WR ниже 50% скрыты, кроме жёстких контрпиков (от ${settings.hardWr}% против врага).` : "Герои с WR ниже 50% скрыты.");
   $("#notes").innerHTML = `<details class="notes"><summary>Откуда данные и как считается</summary>${notes.map(n=>`<div class="note">${esc(n)}</div>`).join("")}</details>`;
@@ -710,9 +730,12 @@ function renderRecs(){
     html += pairs.length ? pairs.map(pairCard).join("") : `<div class="empty-recs">Нет подходящих пар.</div>`;
   }
   if (state.ours.length && ctx.sz){
-    const syn = bestSynergy(per, open, ctx);
+    const cur = open.includes(+state.synPos) ? +state.synPos : "any";
+    const syn = bestSynergy(per, cur === "any" ? open : [cur], ctx);
     const names = state.ours.map(x=>H[x.id]?H[x.id].name:"").filter(Boolean).join(", ");
-    html += `<h3>Лучше всего сочетаются с: ${esc(names)}</h3>` + (syn.length ? syn.map(recCard).join("") : `<div class="empty-recs">Нет пар с ${fmt(settings.minGames)}+ играми.</div>`);
+    html += `<h3>Лучше всего сочетаются с: ${esc(names)}</h3><div class="pairpos">` +
+      ["any",...open].map(k=>`<button class="${String(cur)===String(k)?"on":""}" data-act="synpos" data-k="${k}">${k==="any"?"любая позиция":"поз. "+k+" · "+POS_NAME[k]}</button>`).join("") + `</div>` +
+      (syn.length ? syn.map(recCard).join("") : `<div class="empty-recs">Нет героев с синергией на ${fmt(settings.minGames)}+ играх.</div>`);
   }
   if (ctx.threats.length){
     html += `<h3>Опасные пики врага — контрят наших</h3>` + ctx.threats.map(t=>threatCard(t,ctx,open)).join("");
@@ -930,14 +953,19 @@ function teamProbs(team){
 const L = p => { const q = Math.min(0.99, Math.max(0.01, p)); return Math.log(q/(1-q)); };
 const SIG = x => 1/(1+Math.exp(-x));
 
-function laneStat(a, b){
-  if (!LN || !LN.heroes) return null;
-  // считаем только матчи, где исход линии известен (победа + ничья + поражение)
-  let x = LN.heroes[a] && LN.heroes[a][b];
-  if (x){ const t = x[1]+x[2]+x[3]; if (t) return {m:t, wr:(x[1]+x[2]/2)/t*100}; }
-  x = LN.heroes[b] && LN.heroes[b][a];
-  if (x){ const t = x[1]+x[2]+x[3]; if (t) return {m:t, wr:(x[3]+x[2]/2)/t*100}; }
+// [матчи с известным исходом линии, очки героя a (победа = 1, ничья = 0.5)]
+function laneRaw(S, a, b){
+  if (!S || !S.heroes) return null;
+  let x = S.heroes[a] && S.heroes[a][b];
+  if (x){ const t = x[1]+x[2]+x[3]; if (t) return [t, x[1]+x[2]/2]; }
+  x = S.heroes[b] && S.heroes[b][a];
+  if (x){ const t = x[1]+x[2]+x[3]; if (t) return [t, x[3]+x[2]/2]; }
   return null;
+}
+function laneStat(a, b){
+  const c = laneRaw(LN,a,b), p = LANE_BETA > 0 ? laneRaw(LNP,a,b) : null;
+  const m = (c?c[0]:0) + (p?LANE_BETA*p[0]:0), w = (c?c[1]:0) + (p?LANE_BETA*p[1]:0);
+  return m ? {m:Math.round(m), wr:w/m*100} : null;
 }
 
 // Сумма вкладов героев в «логит» переоценивает силу драфта (игроки решают больше, чем пики),
@@ -1069,6 +1097,7 @@ function renderStatus(){
   const szu = (SZ && SZ.updated) || (SD && SD.updated);
   if (szu) parts.push(`STRATZ: <b>${new Date(szu).toLocaleDateString("ru-RU")}</b>`);
   else parts.push(`STRATZ: <b>нет данных</b>`);
+  if (settings.period === "patch"){ const ps = patchStart(); parts.push(`Патч: <b>${esc(ps.name)}</b>`); }
   parts.push(`Ранг: <b>${RANKS.find(r=>r[0]===settings.rank)[1]}</b>`);
   $("#status").innerHTML = parts.join(" · ");
 }
@@ -1103,34 +1132,66 @@ async function loadHeroStats(force){
 
 // Складывает дневную статистику STRATZ за выбранный период.
 // Слот 0 — все позиции, 1..5 — конкретная позиция.
+let PATCH = null; // data/patch.json от скрипта: последний патч с сайта Dota 2
+function patchStart(){
+  if (settings.patchDate) return {ts:Date.parse(settings.patchDate+"T00:00:00Z")/1000, name:"(дата вручную)", auto:false};
+  const p = PATCH && (settings.patchKind === "major" ? PATCH.latestMajor : PATCH.latest);
+  if (p && p.ts) return {ts:p.ts, name:p.name, auto:true};
+  return {ts:Date.parse("2026-11-18T08:00:00Z")/1000, name:"7.42", auto:false};
+}
+
 function buildPeriod(){
   PST = null; SP = null;
   if (SD && SD.heroes && Array.isArray(SD.days) && SD.days.length){
-    let idx;
+    // parts: [[индексы дней, вес], ...] — дни нового патча с весом 1 и дни до патча с убывающим весом
+    let parts, patchInfo = null;
+    const byDate = SD.days.map((d,i)=>[d,i]).sort((a,b)=>b[0]-a[0]);
     if (settings.period === "patch"){
-      const t = Date.parse((settings.patchDate||DEFAULTS.patchDate)+"T00:00:00Z")/1000;
-      idx = SD.days.map((d,i)=>d>=t?i:-1).filter(i=>i>=0);
+      const ps = patchStart(), t = ps.ts;
+      // день считается днём нового патча, если патч вышел не позже середины этого дня (UTC)
+      const isNew = d => d + 43200 >= t;
+      const newIdx = byDate.filter(x=>isNew(x[0])).map(x=>x[1]);
+      const oldIdx = byDate.filter(x=>!isNew(x[0])).slice(0,14).map(x=>x[1]);
+      const tot = idxs => idxs.reduce((s,i)=>{ for (const id in SD.heroes){ const x = SD.heroes[id][0][i]; if (x) s += x[0]; } return s; }, 0);
+      const newTot = tot(newIdx), oldTot = tot(oldIdx);
+      // «полная выборка» = обычная неделя игр; доля нового патча = сколько от неё уже набрано
+      const target = oldIdx.length ? oldTot/oldIdx.length*7 : newTot;
+      const share = target ? Math.min(1, newTot/target) : 1;
+      const beta = oldTot ? (1-share)*target/oldTot : 0;
+      parts = [[newIdx,1],[oldIdx,beta]];
+      patchInfo = {share, newDays:newIdx.length, oldDays:oldIdx.length, name:ps.name, ts:t, auto:ps.auto};
     } else {
-      idx = SD.days.map((d,i)=>[d,i]).sort((a,b)=>b[0]-a[0]).slice(0,+settings.period||7).map(x=>x[1]);
+      parts = [[byDate.slice(0,+settings.period||7).map(x=>x[1]),1]];
     }
-    let fallback = false;
-    if (!idx.length){ // например, «С начала патча», а STRATZ ещё не выложил дни нового патча
-      idx = SD.days.map((d,i)=>[d,i]).sort((a,b)=>b[0]-a[0]).slice(0,7).map(x=>x[1]);
-      fallback = true;
-    }
-    if (idx.length){
+    const used = parts.filter(([ix,w])=>ix.length && w>0);
+    if (used.length){
       const all = {}, pos = {};
       for (const id in SD.heroes){
         const slots = SD.heroes[id];
-        const sum = s => { let m=0,w=0; const arr = slots[s]||[]; for (const i of idx){ const x = arr[i]; if (x){ m+=x[0]; w+=x[1]; } } return [m,w]; };
+        const sum = s => { let m=0,w=0; const arr = slots[s]||[]; for (const [ix,k] of used) for (const i of ix){ const x = arr[i]; if (x){ m+=k*x[0]; w+=k*x[1]; } } return [m,w]; };
         all[id] = sum(0); pos[id] = [1,2,3,4,5].map(sum);
       }
-      const ds = idx.map(i=>SD.days[i]);
-      PST = {all,n:idx.length,from:Math.min(...ds),to:Math.max(...ds),fallback};
+      const ds = used.flatMap(([ix])=>ix.map(i=>SD.days[i]));
+      PST = {all,n:ds.length,from:Math.min(...ds),to:Math.max(...ds),patch:patchInfo};
       SP = {heroes:pos,updated:SD.updated};
     }
   }
   applyPositions();
+  applyLaneTags();
+}
+
+// «Сильная линия» — по реальным исходам линий из STRATZ: средний исход против всех соперников от 52%.
+// Если данных по линиям нет — берётся ручная таблица.
+function applyLaneTags(){
+  for (const h of LIST){
+    const manual = h.tagsManual || "";
+    const rows = LN && LN.heroes && LN.heroes[h.id];
+    if (!rows){ h.tags = manual; continue; }
+    let t = 0, sc = 0;
+    for (const b in rows){ const v = rows[b]; const n = v[1]+v[2]+v[3]; t += n; sc += v[1]+v[2]/2; }
+    const strong = t >= 1000 && sc/t >= 0.52;
+    h.tags = manual.replace("l","") + (strong ? "l" : "");
+  }
 }
 
 async function fetchJson(url){
@@ -1142,10 +1203,20 @@ async function loadStratz(){
   const base = (settings.dataUrl||"data").replace(/\/+$/,"");
   const ck = base+"|"+key;
   if (!(ck in szCache)){
-    const [m,d,l,t] = await Promise.all(["matchups","daily","lane","time"].map(n=>fetchJson(`${base}/${n}-${key}.json`)));
-    szCache[ck] = {m:m&&m.heroes?m:null, d:d&&d.heroes?d:null, l:l&&l.heroes?l:null, t:t&&t.heroes?t:null};
+    const [m,d,l,t,mp,lp] = await Promise.all(["matchups","daily","lane","time","matchups","lane"].map((n,i)=>fetchJson(`${base}/${n}-${key}${i>=4?"-prev":""}.json`)));
+    const ok = j => j && j.heroes ? j : null;
+    szCache[ck] = {m:ok(m), d:ok(d), l:ok(l), t:ok(t), mp:ok(mp), lp:ok(lp)};
   }
-  SZ = szCache[ck].m; SD = szCache[ck].d; LN = szCache[ck].l; TD = szCache[ck].t; SZKEY = key;
+  if (!("patch" in szCache)) szCache.patch = await fetchJson(`${base}/patch.json`);
+  PATCH = szCache.patch && szCache.patch.latest ? szCache.patch : null;
+  const C = szCache[ck];
+  SZ = C.m; SD = C.d; LN = C.l; TD = C.t; SZP = C.mp; LNP = C.lp; SZKEY = key;
+  // насколько текущая недельная выборка меньше прошлой — столько прошлой и подмешиваем
+  const total = (S, f) => { let s = 0; if (S) for (const a in S.heroes) s += f(S.heroes[a]); return s; };
+  const pairTot = S => total(S, h => Object.values(h.v||{}).reduce((s,x)=>s+x[0],0));
+  const laneTot = S => total(S, h => Object.values(h).reduce((s,x)=>s+x[0],0));
+  PAIR_BETA = SZ && SZP ? clamp(1 - pairTot(SZ)/Math.max(1,pairTot(SZP)), 0, 1) : 0;
+  LANE_BETA = LN && LNP ? clamp(1 - laneTot(LN)/Math.max(1,laneTot(LNP)), 0, 1) : 0;
   buildPeriod();
 }
 
@@ -1176,7 +1247,8 @@ function fillSettings(){
   $("#setPerPos").value = settings.perPos;
   $("#setDataUrl").value = settings.dataUrl;
   $("#setPeriod").value = settings.period;
-  $("#setPatchDate").value = settings.patchDate;
+  $("#setPatchDate").value = settings.patchDate || "";
+  $("#setPatchKind").value = settings.patchKind || "any";
   document.querySelectorAll("[data-tag]").forEach(c=>c.checked=!!settings.tags[c.dataset.tag]);
 }
 async function onSettings(){
@@ -1190,7 +1262,8 @@ async function onSettings(){
   settings.perPos = clamp(Math.round(+$("#setPerPos").value || DEFAULTS.perPos), 1, 10);
   settings.dataUrl = $("#setDataUrl").value.trim() || "data";
   settings.period = $("#setPeriod").value;
-  settings.patchDate = $("#setPatchDate").value || DEFAULTS.patchDate;
+  settings.patchDate = $("#setPatchDate").value || "";
+  settings.patchKind = $("#setPatchKind").value;
   document.querySelectorAll("[data-tag]").forEach(c=>settings.tags[c.dataset.tag]=c.checked);
   save();
   buildPeriod();
@@ -1207,6 +1280,7 @@ document.addEventListener("click", e=>{
   else if (act === "rm") removeHero(b.dataset.team, +b.dataset.i);
   else if (act === "pos") setPos(b.dataset.team, +b.dataset.i, +b.dataset.p);
   else if (act === "pairpos"){ state.pairPos = b.dataset.k; save(); renderRecs(); }
+  else if (act === "synpos"){ state.synPos = b.dataset.k; save(); renderRecs(); }
   else if (act === "pickpair"){ addHero(+b.dataset.a, "ours", +b.dataset.pa); addHero(+b.dataset.b, "ours", +b.dataset.pb); }
 });
 $("#modes").addEventListener("click", e=>{

@@ -63,6 +63,19 @@ const CHECK = process.argv.includes("--check");
 // (иначе запуск идёт почти час). FORCE=1 — скачать всё заново.
 const FORCE = process.env.FORCE === "1" || process.env.FORCE === "true";
 const MAX_AGE_DAYS = 3;
+// Перед перезаписью пар/линий сохраняем прошлую выборку в *-prev.json, если она отличается:
+// сайт подмешивает её, пока новая неделя STRATZ (например, после патча) набрана не полностью.
+async function rotate(file, fresh, total) {
+  try {
+    const old = JSON.parse(await readFile(file, "utf8"));
+    if (old?.heroes && total(old) > 0 && total(old) !== total(fresh)) {
+      await writeFile(file.replace(/\.json$/, "-prev.json"), JSON.stringify(old));
+      console.log(`Прошлая выборка сохранена: ${file.replace(/\.json$/, "-prev.json")}`);
+    }
+  } catch {}
+}
+const pairTotal = (j) => Object.values(j.heroes).reduce((s, h) => s + Object.values(h.v || {}).reduce((a, x) => a + x[0], 0), 0);
+const laneTotal = (j) => Object.values(j.heroes).reduce((s, h) => s + Object.values(h).reduce((a, x) => a + x[0], 0), 0);
 async function isFresh(file) {
   if (FORCE) return false;
   try {
@@ -138,6 +151,42 @@ const heroIds = (await heroesRes.json()).map((h) => h.id).sort((a, b) => a - b);
 console.log(`Героев: ${heroIds.length}`);
 
 await mkdir("data", { recursive: true });
+
+// ---------- патчи: дата текущего патча с официального сайта Dota 2 ----------
+// Сайт сам считает «с начала патча» от этой даты, поэтому после нового патча (и буквенного тоже) ничего настраивать не нужно.
+try {
+  const list = [];
+  const pl = await (await fetch("https://www.dota2.com/datafeed/patchnoteslist?language=english")).json();
+  for (const p of pl?.patches || []) if ((p.patch_name || p.patch_number) && p.patch_timestamp) list.push({ name: p.patch_name || p.patch_number, ts: p.patch_timestamp });
+  list.sort((a, b) => a.ts - b.ts);
+  // общий список на сайте Valve иногда обновляется позже самих патчноутов — проверяем следующие версии напрямую
+  const next = (name) => {
+    const m = String(name).match(/^(\d+)\.(\d+)([a-z]?)$/);
+    if (!m) return [];
+    const letter = m[3] ? String.fromCharCode(m[3].charCodeAt(0) + 1) : "a";
+    return [`${m[1]}.${m[2]}${letter}`, `${m[1]}.${String(+m[2] + 1).padStart(m[2].length, "0")}`];
+  };
+  let last = list.at(-1);
+  for (let step = 0; step < 6 && last; step++) {
+    let found = null;
+    for (const v of next(last.name)) {
+      try {
+        const pj = await (await fetch(`https://www.dota2.com/datafeed/patchnotes?version=${v}&language=english`)).json();
+        if (pj?.patch_timestamp) { found = { name: pj.patch_name || v, ts: pj.patch_timestamp }; break; }
+      } catch {}
+    }
+    if (!found || found.ts <= last.ts) break;
+    list.push(found);
+    last = found;
+  }
+  if (last) {
+    const major = [...list].reverse().find((p) => /^\d+\.\d+$/.test(p.name)) || last;
+    await writeFile("data/patch.json", JSON.stringify({ updated: new Date().toISOString(), latest: last, latestMajor: major, patches: list.slice(-12) }));
+    console.log(`Текущий патч: ${last.name} от ${new Date(last.ts * 1000).toISOString().slice(0, 10)}`);
+  }
+} catch (e) {
+  console.warn("Не удалось получить список патчей:", e.message);
+}
 let saved = 0; // сколько файлов удалось обновить
 const diag = { started: new Date().toISOString(), sections: {} };
 const note = (name, info) => { diag.sections[name] = { ...(diag.sections[name] || {}), ...info }; };
@@ -186,6 +235,7 @@ for (const [key, brackets] of Object.entries(BRACKETS)) {
     console.warn(`${key}: скачано только ${got} из ${ids.length} героев — файл не обновляю, оставляю прошлые данные`);
     continue;
   }
+  await rotate(`data/matchups-${key}.json`, out, pairTotal);
   await writeFile(`data/matchups-${key}.json`, JSON.stringify(out));
   saved++;
   note("matchups", { [key]: { heroes: got, failed } });
@@ -328,6 +378,7 @@ try {
     note("lane", { [key]: { heroes: got, failed } });
     if (CHECK) { console.log("Линии работают:", Object.entries(Object.values(out.heroes)[0] || {}).slice(0, 3)); break; }
     if (got < heroIds.length * 0.5) { console.warn(`Линии ${key}: только ${got} героев, не сохраняю`); continue; }
+    await rotate(`data/lane-${key}.json`, out, laneTotal);
     await writeFile(`data/lane-${key}.json`, JSON.stringify(out));
     saved++;
     console.log(`Линии ${key}: ${got} героев` + (failed ? ` (пропущено ${failed})` : ""));
