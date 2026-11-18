@@ -113,6 +113,8 @@ h3{margin:14px 0 8px;font-size:13px;color:var(--muted);font-weight:600;text-tran
 #compCard h3{margin-top:0}
 details.notes{margin-bottom:8px}
 details.notes summary{cursor:pointer;color:var(--muted);font-size:12px;margin-bottom:6px}
+.rec.threat{cursor:default;border-color:#4a2a28}
+.rec.threat:hover{border-color:#4a2a28}
 .chip.hard{color:#1a1405;background:var(--gold);border-color:var(--gold);font-weight:700}
 .empty-recs{color:var(--muted);font-size:13px;padding:6px 0}
 .err{color:var(--bad);padding:20px;text-align:center}
@@ -135,6 +137,9 @@ details.notes summary{cursor:pointer;color:var(--muted);font-size:12px;margin-bo
   </label>
   <label>Минимум игр для пары героев
     <input type="number" id="setMinGames" min="10" step="10">
+  </label>
+  <label>Минимум игр для «опасных пиков врага» (контрпиков наших)
+    <input type="number" id="setThreatMin" min="50" step="50">
   </label>
   <div class="set-tags">
     <label class="row"><input type="checkbox" id="setHard"> Жёсткие контрпики даже с WR ниже 50%</label>
@@ -344,7 +349,7 @@ const STRATZ_BRACKET = {all:"ALL","1":"HERALD_GUARDIAN","2":"HERALD_GUARDIAN","3
 const STRATZ_LABEL = {ALL:"все ранги",HERALD_GUARDIAN:"Рекрут–Страж",CRUSADER_ARCHON:"Рыцарь–Герой",LEGEND_ANCIENT:"Легенда–Властелин",DIVINE_IMMORTAL:"Божество–Титан"};
 const POS_NAME = {1:"Керри",2:"Мид",3:"Оффлейн",4:"Семи-саппорт",5:"Фулл-саппорт"};
 const TAG_NAME = {p:"урон по башням",g:"глобалка",r:"быстрый Рошан",l:"сильная линия"};
-const DEFAULTS = {rank:"7",minGames:150,hard:true,hardWr:55,tags:{p:true,g:true,r:true,l:true},offrole:false,perPos:5,dataUrl:"data",period:"patch",patchDate:"2026-11-19"};
+const DEFAULTS = {rank:"7",minGames:150,hard:true,hardWr:55,tags:{p:true,g:true,r:true,l:true},offrole:false,perPos:5,threatMin:600,dataUrl:"data",period:"patch",patchDate:"2026-11-19"};
 
 const LS = {
   get(k,d){try{const v=localStorage.getItem("dd_"+k);return v?JSON.parse(v):d}catch(e){return d}},
@@ -672,7 +677,14 @@ function renderRecs(){
   const open = [1,2,3,4,5].filter(p=>!taken.has(p));
   const un = unavailable();
   const per = {}, best = {};
-  ctx.likely = likelyEnemyPicks(ctx);
+  ctx.threats = enemyThreats(ctx);
+  {
+    const byId = {};
+    for (const x of likelyEnemyPicks(ctx)) byId[x.h.id] = {...x};
+    for (const t of ctx.threats){ if (byId[t.h.id]) byId[t.h.id].w += t.w; else byId[t.h.id] = {h:t.h, p:t.p, w:t.w, s:0, threat:true}; }
+    ctx.likely = Object.values(byId).sort((a,b)=>b.w-a.w);
+    ctx.metaLikely = ctx.likely.filter(x=>!x.threat && !ctx.threats.some(t=>t.h.id===x.h.id));
+  }
   for (const p of open){
     const pool = LIST.filter(h=>settings.offrole || posOf(h).includes(p));
     const tiers = tierMap(pool.map(h=>{ const m = metaFor(h,p,ctx); return m ? {id:h.id,pts:m.pts} : null; }).filter(Boolean));
@@ -700,8 +712,13 @@ function renderRecs(){
     const names = state.ours.map(x=>H[x.id]?H[x.id].name:"").filter(Boolean).join(", ");
     html += `<h3>Лучше всего сочетаются с: ${esc(names)}</h3>` + (syn.length ? syn.map(recCard).join("") : `<div class="empty-recs">Нет пар с ${fmt(settings.minGames)}+ играми.</div>`);
   }
-  if (ctx.likely.length){
-    html += `<h3>Скорее всего враги ещё возьмут</h3><div class="likely">` + ctx.likely.slice(0,6).map(x=>`<div class="lk">${pic(x.h)}<div><div>${esc(x.h.name)}</div><div class="small">поз. ${x.p}</div></div></div>`).join("") + `</div><div class="small">Советы выше учитывают, как герой стоит против этих героев.</div>`;
+  if (ctx.threats.length){
+    html += `<h3>Опасные пики врага — контрят наших</h3>` + ctx.threats.map(t=>threatCard(t,ctx,open)).join("");
+  } else if (state.ours.length && ctx.sz && state.enemy.length < 5){
+    html += `<h3>Опасные пики врага — контрят наших</h3><div class="empty-recs">Явных контрпиков (от ${fmt(settings.threatMin)} игр, винрейт ниже 49%) не нашёл.</div>`;
+  }
+  if (ctx.metaLikely && ctx.metaLikely.length){
+    html += `<h3>Популярные пики врага</h3><div class="likely">` + ctx.metaLikely.slice(0,6).map(x=>`<div class="lk">${pic(x.h)}<div><div>${esc(x.h.name)}</div><div class="small">поз. ${x.p}</div></div></div>`).join("") + `</div><div class="small">Советы учитывают, как герой стоит против опасных и популярных пиков врага.</div>`;
   }
   for (const p of open){
     html += `<h3>Позиция ${p} — ${POS_NAME[p]}</h3>`;
@@ -783,6 +800,42 @@ function likelyEnemyPicks(ctx){
   const best = {};
   for (const x of out) if (!best[x.h.id] || best[x.h.id].w < x.w) best[x.h.id] = x;
   return Object.values(best).sort((a,b)=>b.w-a.w || b.s-a.s);
+}
+
+/* ---------- опасные пики врага: контрпики наших героев ---------- */
+// Герои, против которых у наших уже взятых героев винрейт ниже 49% на выборке от settings.threatMin игр,
+// и которые реально играют на одной из позиций, ещё свободных у врага.
+function enemyThreats(ctx){
+  if (!ctx.sz || !state.ours.length || state.enemy.length >= 5) return [];
+  const PE = ctx.enemyP, un = unavailable();
+  const openMass = [1,2,3,4,5].map(p=>Math.max(0, 1 - PE.reduce((s,x)=>s+x[p-1],0)));
+  const out = [];
+  for (const h of LIST){
+    if (un.has(h.id)) continue;
+    const pp = posProb(h);
+    let bestP = 0, bestQ = 0;
+    for (let p=1;p<=5;p++){
+      if (pp[p-1] < 0.1 || openMass[p-1] < 0.25) continue;
+      const q = pp[p-1]*openMass[p-1];
+      if (q > bestQ){ bestQ = q; bestP = p; }
+    }
+    if (!bestP) continue;
+    const hits = [];
+    for (const o of state.ours){
+      const pr = pair(o.id, h.id, "v"); // винрейт НАШЕГО героя против этого
+      if (pr && pr.m >= settings.threatMin && pr.wr < 49) hits.push({n:H[o.id]?H[o.id].name:"?", wr:pr.wr, m:pr.m});
+    }
+    if (!hits.length) continue;
+    const sev = hits.reduce((s,x)=>s+(50-x.wr),0);
+    out.push({h, p:bestP, sev, hits, w:Math.min(1,bestQ*2)*sev/3});
+  }
+  return out.sort((a,b)=>b.sev-a.sev).slice(0,8);
+}
+function threatCard(t, ctx, open){
+  const chips = t.hits.sort((a,b)=>a.wr-b.wr).map(x=>`<span class="chip bad">${esc(x.n)} выигрывает только ${x.wr.toFixed(1)}% (${fmt(x.m)} игр)</span>`);
+  const mine = open.find(p=>posOf(t.h).includes(p) && (()=>{ const m = metaFor(t.h,p,ctx); return m && m.wr >= 50; })());
+  if (mine) chips.push(`<span class="chip good">можно забрать себе на поз. ${mine}</span>`);
+  return `<div class="rec threat">${pic(t.h)}<div class="body"><div class="top"><span class="rn">${esc(t.h.name)}</span><span class="rp">у врага обычно поз. ${t.p}</span></div><div class="chips">${chips.join("")}</div></div></div>`;
 }
 
 /* ---------- пары на двойной пик ---------- */
@@ -1114,6 +1167,7 @@ function fillSettings(){
   $("#setRank").innerHTML = RANKS.map(([v,t])=>`<option value="${v}">${t}</option>`).join("");
   $("#setRank").value = settings.rank;
   $("#setMinGames").value = settings.minGames;
+  $("#setThreatMin").value = settings.threatMin;
   $("#setHard").checked = settings.hard;
   $("#setHardWr").value = settings.hardWr;
   $("#setOffrole").checked = settings.offrole;
@@ -1127,6 +1181,7 @@ async function onSettings(){
   const oldRank = settings.rank, oldUrl = settings.dataUrl;
   settings.rank = $("#setRank").value;
   settings.minGames = Math.max(1, +$("#setMinGames").value || DEFAULTS.minGames);
+  settings.threatMin = Math.max(50, +$("#setThreatMin").value || DEFAULTS.threatMin);
   settings.hard = $("#setHard").checked;
   settings.hardWr = clamp(+$("#setHardWr").value || DEFAULTS.hardWr, 50, 80);
   settings.offrole = $("#setOffrole").checked;
