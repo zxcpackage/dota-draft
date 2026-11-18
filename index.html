@@ -349,7 +349,7 @@ const STRATZ_BRACKET = {all:"ALL","1":"HERALD_GUARDIAN","2":"HERALD_GUARDIAN","3
 const STRATZ_LABEL = {ALL:"все ранги",HERALD_GUARDIAN:"Рекрут–Страж",CRUSADER_ARCHON:"Рыцарь–Герой",LEGEND_ANCIENT:"Легенда–Властелин",DIVINE_IMMORTAL:"Божество–Титан"};
 const POS_NAME = {1:"Керри",2:"Мид",3:"Оффлейн",4:"Семи-саппорт",5:"Фулл-саппорт"};
 const TAG_NAME = {p:"урон по башням",g:"глобалка",r:"быстрый Рошан",l:"сильная линия"};
-const DEFAULTS = {rank:"7",minGames:150,hard:true,hardWr:55,tags:{p:true,g:true,r:true,l:true},offrole:false,perPos:5,threatMin:600,dataUrl:"data",period:"patch",patchDate:"2026-11-19"};
+const DEFAULTS = {rank:"7",minGames:150,hard:true,hardWr:55,tags:{p:true,g:true,r:true,l:true},offrole:false,perPos:5,threatMin:1000,dataUrl:"data",period:"patch",patchDate:"2026-11-19"};
 
 const LS = {
   get(k,d){try{const v=localStorage.getItem("dd_"+k);return v?JSON.parse(v):d}catch(e){return d}},
@@ -369,6 +369,8 @@ for (const line of HERO_TABLE.trim().split("\n")){
 
 let settings = Object.assign({}, DEFAULTS, LS.get("settings2",{}));
 settings.tags = Object.assign({}, DEFAULTS.tags, settings.tags||{});
+// переход на новые значения по умолчанию у тех, у кого уже сохранены старые настройки
+if ((settings.v||1) < 2){ settings.threatMin = 1000; settings.v = 2; }
 let state = Object.assign({ours:[],enemy:[],bans:[],mode:"ours",pairPos:"any"}, LS.get("draft",{}));
 let H = {}, LIST = [], heroStatsMeta = null, SZ = null, SP = null, SD = null, PST = null, LN = null, TD = null, SZKEY = null;
 const szCache = {};
