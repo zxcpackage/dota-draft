@@ -1,0 +1,796 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Драфт-помощник Dota 2</title>
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon-192.png">
+<meta name="theme-color" content="#101217">
+<style>
+:root{--bg:#0d0f13;--panel:#161920;--panel2:#1d212a;--line:#2a2f3a;--text:#e6e8ec;--muted:#8d94a3;--ours:#5ccf7a;--enemy:#ef5f52;--ban:#9aa0ac;--gold:#e0b04f;--good:#5ccf7a;--bad:#ef6b5f;--tag:#7fa7ff}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font:14px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+button,input,select{font:inherit;color:inherit}
+button{cursor:pointer;background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:6px 12px}
+button:hover{border-color:#3d4452}
+header{display:flex;align-items:center;gap:10px;padding:10px 16px;border-bottom:1px solid var(--line);background:#11141a;position:sticky;top:0;z-index:5;flex-wrap:wrap}
+.brand{font-weight:700;font-size:16px;color:var(--gold);margin-right:6px}
+.status{color:var(--muted);font-size:12px;flex:1;min-width:200px}
+.status b{color:var(--text);font-weight:500}
+.status .warn{color:var(--bad)}
+#settings{background:var(--panel);border-bottom:1px solid var(--line);padding:14px 16px;display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:12px 22px}
+#settings[hidden]{display:none}
+#settings label{display:flex;flex-direction:column;gap:4px;color:var(--muted);font-size:12px}
+#settings .row{flex-direction:row;align-items:center;gap:8px;color:var(--text);font-size:13px}
+#settings input[type=number],#settings input[type=text],#settings select{background:var(--panel2);border:1px solid var(--line);border-radius:6px;padding:6px 8px}
+.set-tags{display:flex;flex-direction:column;gap:4px}
+main{display:grid;grid-template-columns:minmax(0,1.25fr) minmax(340px,1fr);gap:16px;padding:16px;max-width:1500px;margin:0 auto}
+@media (max-width:1000px){main{grid-template-columns:1fr}}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px}
+h2{margin:0 0 10px;font-size:15px}
+h3{margin:14px 0 8px;font-size:13px;color:var(--muted);font-weight:600;text-transform:none}
+.teams{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+@media (max-width:620px){.teams{grid-template-columns:1fr}}
+.team.ours h2{color:var(--ours)} .team.enemy h2{color:var(--enemy)}
+.slot{display:flex;align-items:center;gap:8px;padding:6px;border-radius:8px;background:var(--panel2);margin-bottom:6px;min-height:46px}
+.slot.empty{color:var(--muted);font-size:12px;justify-content:center;border:1px dashed var(--line);background:transparent}
+.slot .nm{flex:1;min-width:0;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pos{display:flex;gap:3px}
+.pos button{padding:2px 0;width:24px;font-size:12px;border-radius:5px;background:#12151b}
+.pos button.on{background:var(--gold);color:#1a1405;border-color:var(--gold);font-weight:700}
+.x{padding:2px 8px;background:transparent;border-color:transparent;color:var(--muted)}
+.x:hover{color:var(--bad)}
+.pic{position:relative;width:52px;height:30px;border-radius:5px;overflow:hidden;flex:none;background:#2a2f3a;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:#c9ced8}
+.pic img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.bans{margin-top:12px}
+.banlist{display:flex;flex-wrap:wrap;gap:6px;min-height:30px}
+.banchip{display:flex;align-items:center;gap:6px;background:var(--panel2);border-radius:6px;padding:3px 4px 3px 3px;font-size:12px}
+.banchip .pic{width:40px;height:23px;filter:grayscale(1)}
+.picker{margin-top:14px}
+.modes{display:flex;gap:6px;margin-bottom:8px;flex-wrap:wrap}
+.modes button.on[data-mode=ours]{background:var(--ours);border-color:var(--ours);color:#06210f;font-weight:700}
+.modes button.on[data-mode=enemy]{background:var(--enemy);border-color:var(--enemy);color:#2a0805;font-weight:700}
+.modes button.on[data-mode=ban]{background:var(--ban);border-color:var(--ban);color:#15171b;font-weight:700}
+#search{width:100%;background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:9px 12px;font-size:15px}
+#search:focus{outline:2px solid var(--gold);outline-offset:-1px}
+.hint{color:var(--muted);font-size:12px;margin:6px 0 8px}
+#grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(92px,1fr));gap:6px;max-height:430px;overflow:auto;padding-right:2px}
+.tile{display:flex;flex-direction:column;align-items:stretch;padding:4px;border-radius:7px;background:var(--panel2);border:1px solid transparent;text-align:left;gap:3px}
+.tile:hover{border-color:var(--gold)}
+.tile .pic{width:100%;height:46px}
+.tile .tn{font-size:11.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tile .tw{font-size:11px}
+.tile.off{opacity:.25;pointer-events:none}
+.tile.first{border-color:var(--gold)}
+.good{color:var(--good)} .bad{color:var(--bad)}
+#notes .note{font-size:12px;color:var(--muted);background:var(--panel2);border-left:3px solid var(--gold);padding:7px 10px;margin-bottom:8px;border-radius:0}
+.openpos{font-size:13px;margin-bottom:6px}
+.openpos b{color:var(--gold)}
+.rec{display:flex;gap:10px;align-items:flex-start;padding:8px;border-radius:9px;background:var(--panel2);margin-bottom:6px;border:1px solid transparent;cursor:pointer;width:100%;text-align:left}
+.rec:hover{border-color:var(--ours)}
+.rec .pic{width:64px;height:36px}
+.rec .body{flex:1;min-width:0}
+.rec .top{display:flex;gap:8px;align-items:baseline;flex-wrap:wrap}
+.rec .rn{font-weight:600;font-size:14px}
+.rec .rp{font-size:11px;color:var(--muted)}
+.rec .sc{margin-left:auto;font-weight:700;color:var(--gold);font-size:13px}
+.chips{display:flex;flex-wrap:wrap;gap:4px;margin-top:5px}
+.chip{font-size:11px;padding:1px 7px;border-radius:999px;background:#12151b;border:1px solid var(--line);color:var(--muted)}
+.chip.good{color:var(--good);border-color:#2c5a39}
+.chip.bad{color:var(--bad);border-color:#5e2d29}
+.chip.tag{color:var(--tag);border-color:#2c3c66}
+.tier{display:inline-block;min-width:18px;text-align:center;font-size:11px;font-weight:800;padding:0 5px;border-radius:4px;margin-right:2px}
+.tier.tS{background:#e8566c;color:#fff}.tier.tA{background:#f2a65e;color:#2a1405}.tier.tB{background:#f2dc5d;color:#2a2405}.tier.tC{background:#b8e07a;color:#18250a}.tier.tD{background:#68c08a;color:#0a2514}
+.chip.hard{color:#1a1405;background:var(--gold);border-color:var(--gold);font-weight:700}
+.empty-recs{color:var(--muted);font-size:13px;padding:6px 0}
+.err{color:var(--bad);padding:20px;text-align:center}
+.small{font-size:12px;color:var(--muted)}
+@media (max-width:620px){header{position:static}}
+</style>
+</head>
+<body>
+<header>
+  <div class="brand">Драфт-помощник</div>
+  <div class="status" id="status">Загрузка данных…</div>
+  <button id="btnNew" title="Очистить пики и баны">Новый драфт</button>
+  <button id="btnRefresh" title="Скачать свежую статистику">Обновить данные</button>
+  <button id="btnSettings">Настройки</button>
+</header>
+
+<section id="settings" hidden>
+  <label>Ранг (статистика берётся по нему)
+    <select id="setRank"></select>
+  </label>
+  <label>Минимум игр для пары героев
+    <input type="number" id="setMinGames" min="10" step="10">
+  </label>
+  <div class="set-tags">
+    <label class="row"><input type="checkbox" id="setHard"> Жёсткие контрпики даже с WR ниже 50%</label>
+    <label>Порог «жёсткого» контрпика: WR против врага, %
+      <input type="number" id="setHardWr" min="50" max="70" step="0.5">
+    </label>
+  </div>
+  <div class="set-tags">
+    <span class="small">Ценить героев с:</span>
+    <label class="row"><input type="checkbox" data-tag="p"> уроном по башням (коры и саппорты)</label>
+    <label class="row"><input type="checkbox" data-tag="g"> глобальными скиллами</label>
+    <label class="row"><input type="checkbox" data-tag="r"> быстрым Рошаном (только керри и мид)</label>
+    <label class="row"><input type="checkbox" data-tag="l"> сильной линией</label>
+  </div>
+  <div class="set-tags">
+    <label class="row"><input type="checkbox" id="setOffrole"> Предлагать героев не на их обычных позициях</label>
+    <label>Советов на каждую позицию
+      <input type="number" id="setPerPos" min="1" max="8">
+    </label>
+  </div>
+  <label>Период статистики (нужен STRATZ)
+    <select id="setPeriod">
+      <option value="patch">С начала патча</option>
+      <option value="1">Последний день</option>
+      <option value="3">3 дня</option>
+      <option value="7">7 дней</option>
+      <option value="14">14 дней</option>
+      <option value="30">30 дней</option>
+    </select>
+  </label>
+  <label>Дата выхода патча (для «С начала патча»)
+    <input type="date" id="setPatchDate">
+  </label>
+  <label>Где лежат данные STRATZ (папка или ссылка)
+    <input type="text" id="setDataUrl" placeholder="data">
+  </label>
+</section>
+
+<main>
+  <div>
+    <div class="card">
+      <div class="teams">
+        <div class="team ours"><h2>Наша команда</h2><div id="oursSlots"></div></div>
+        <div class="team enemy"><h2>Враги</h2><div id="enemySlots"></div></div>
+      </div>
+      <div class="bans"><h3>Баны</h3><div class="banlist" id="banList"></div></div>
+    </div>
+    <div class="card picker">
+      <div class="modes" id="modes">
+        <button data-mode="ours">Добавить нам</button>
+        <button data-mode="enemy">Добавить врагам</button>
+        <button data-mode="ban">Забанить</button>
+      </div>
+      <input id="search" autocomplete="off" placeholder="Поиск: пудж, am, сф, инвок…">
+      <div class="hint">Enter — добавить первого героя из списка. Позицию можно поменять кнопками 1–5 у героя.</div>
+      <div id="grid"></div>
+    </div>
+  </div>
+  <aside class="card">
+    <h2>Кого пикать</h2>
+    <div id="notes"></div>
+    <div id="recs"><div class="empty-recs">Загрузка…</div></div>
+  </aside>
+</main>
+
+<script>
+"use strict";
+// Позиции: 1 керри, 2 мид, 3 оффлейн, 4 семи-саппорт, 5 фулл-саппорт.
+// Теги: g — глобальный скилл (любая позиция), p — урон по башням/пуш (коры и саппорты),
+// r — быстрый Рошан (засчитывается только на 1-й и 2-й позиции), l — сильная линия.
+// Формат: внутреннее_имя|позиции|теги|сокращения для поиска
+const HERO_TABLE = `
+antimage|1||ам,am,антимаг
+axe|3|l|акс,топор
+bane|54|l|бейн
+bloodseeker|13||бс,bs,блудсикер,блуд
+crystal_maiden|54||цм,cm,кристалка
+drow_ranger|1|pr|дров,drow,дровка
+earthshaker|45||шейкер,es,ес
+juggernaut|1|r|джагер,джаг,jugg
+mirana|45|g|мирана,potm
+morphling|12||морф,morph
+nevermore|21||сф,sf,невермор,шадоуфинд
+phantom_lancer|1|p|пл,pl,лансер
+puck|2||пак
+pudge|453||пудж
+razor|312|l|разор,рейзор
+sand_king|43||ск,sk,сенд
+storm_spirit|2||шторм,storm
+sven|1|r|свен
+tiny|42|p|тини
+vengefulspirit|54|r|венга,венж
+windrunner|243|l|врка,wr,винда
+zuus|25|gl|зевс,zeus
+kunkka|32||кунка
+lina|21|l|лина
+lion|54||лион
+shadow_shaman|5|pr|шаман,рх,rh,ss
+slardar|3|r|слардар,слард
+tidehunter|3||тайд,tide
+witch_doctor|5|l|вд,wd,доктор
+lich|5||лич
+riki|41||рики
+enigma|34|p|энигма
+tinker|2|g|тинкер
+sniper|21|pl|снайпер,снайп
+necrolyte|23|l|некр,necro,некрофос
+warlock|54||варлок
+beastmaster|3|l|бист,бм,bm
+queenofpain|2|l|квопа,qop,королева
+venomancer|453|pl|веник,веном
+faceless_void|1||войд,fv,фв
+skeleton_king|13|r|вк,wk,король
+death_prophet|23|pl|дп,dp,профетка
+phantom_assassin|1|r|па,pa,фантомка
+pugna|52|pl|пугна
+templar_assassin|21|prl|та,ta,темпларка
+viper|23|l|вайпер
+luna|1|pr|луна
+dragon_knight|213|pl|дк,dk,драгон
+dazzle|54|l|дазл
+rattletrap|4||клок,clock,клокверк
+leshrac|2|pl|лешрак,леш
+furion|341|gp|нп,np,профет,фурион
+life_stealer|1|r|лс,ls,гуля,лайфстилер
+dark_seer|3||дс,ds,сир
+clinkz|41|prl|клинкз,клинк
+omniknight|54||омни
+enchantress|54||энча
+huskar|2|l|хускар
+night_stalker|3||нс,ns,сталкер,баланар
+broodmother|32|prl|брудка,бруда
+bounty_hunter|4||бх,bh,баунти
+weaver|41||вивер
+jakiro|5|pl|джакиро
+batrider|43|l|бэт,бат
+chen|5|gp|чен
+spectre|1|g|спектра,спектр
+ancient_apparition|5|g|аа,aa,апарат
+doom_bringer|3||дум,doom
+ursa|1|r|урса
+spirit_breaker|43|g|бара,сб,sb
+gyrocopter|15||гиро,gyro
+alchemist|1|r|алх,алхимик,alch
+invoker|2|g|инвок,invo,инвокер
+silencer|54|g|сайленсер,сало
+obsidian_destroyer|2|l|од,od,outworld
+lycan|3|pr|ликан
+brewmaster|3||панда,брю,brew
+shadow_demon|5||сд,sd,демон
+lone_druid|12|pr|лд,ld,друид
+chaos_knight|13|p|ck,чк,хаос
+meepo|21||мипо
+treant|54|g|трент
+ogre_magi|54|l|огр,огрмаг
+undying|5|l|андаинг,андайинг
+rubick|4||рубик
+disruptor|5|l|дизраптор,дизр
+nyx_assassin|4||никс,nyx
+naga_siren|1|p|нага
+keeper_of_the_light|5|g|котл,kotl,кипер
+wisp|54|g|ио,io,висп
+visage|2|p|визаж
+slark|1||сларк
+medusa|12||медуза,дуза
+troll_warlord|1|prl|тролль,тролл
+centaur|3||кентавр,цент,cent
+magnataur|34||магнус,маг
+shredder|32|l|тимбер,timber,шредер
+bristleback|31|l|бб,bb,бристл
+tusk|4||таск
+skywrath_mage|45||скай,sky
+abaddon|53||абаддон,аба
+elder_titan|54||ет,et,титан
+legion_commander|3|l|лега,lc,легионка
+techies|45||течис,минер
+ember_spirit|21||эмбер,ember
+earth_spirit|4||ерс,earth
+abyssal_underlord|3||андерлорд,питлорд,underlord
+terrorblade|1|pr|тб,tb,террорблейд
+phoenix|45||феникс
+oracle|5||оракл
+winter_wyvern|54||виверна,ww
+arc_warden|21|pl|арк,arc,зет
+monkey_king|142|rl|мк,mk,манки
+dark_willow|4||вилоу,dw
+pangolier|324||панго,pango
+grimstroke|54|l|гримстрок,грим
+hoodwink|4|l|худвинк,белка
+void_spirit|2||войдспирит,vsp
+snapfire|45||снапфаер,бабка
+mars|3|l|марс
+ringmaster|54||рингмастер
+dawnbreaker|35||даун,dawn
+marci|43||марси
+primal_beast|32|l|праймал,pb
+muerta|12|l|муэрта
+kez|12|l|кез
+largo|45||ларго
+`;
+
+const OPENDOTA = "https://api.opendota.com/api/heroStats";
+const IMG_HOST = "https://cdn.cloudflare.steamstatic.com";
+const RANKS = [["all","Все ранги"],["1","Рекрут"],["2","Страж"],["3","Рыцарь"],["4","Герой"],["5","Легенда"],["6","Властелин"],["7","Божество"],["8","Титан"],["pro","Про-сцена"]];
+const STRATZ_BRACKET = {all:"ALL","1":"HERALD_GUARDIAN","2":"HERALD_GUARDIAN","3":"CRUSADER_ARCHON","4":"CRUSADER_ARCHON","5":"LEGEND_ANCIENT","6":"LEGEND_ANCIENT","7":"DIVINE_IMMORTAL","8":"DIVINE_IMMORTAL",pro:"ALL"};
+const STRATZ_LABEL = {ALL:"все ранги",HERALD_GUARDIAN:"Рекрут–Страж",CRUSADER_ARCHON:"Рыцарь–Герой",LEGEND_ANCIENT:"Легенда–Властелин",DIVINE_IMMORTAL:"Божество–Титан"};
+const POS_NAME = {1:"Керри",2:"Мид",3:"Оффлейн",4:"Семи-саппорт",5:"Фулл-саппорт"};
+const TAG_NAME = {p:"урон по башням",g:"глобалка",r:"быстрый Рошан",l:"сильная линия"};
+const DEFAULTS = {rank:"7",minGames:150,hard:true,hardWr:55,tags:{p:true,g:true,r:true,l:true},offrole:false,perPos:5,dataUrl:"data",period:"patch",patchDate:"2026-11-19"};
+
+const LS = {
+  get(k,d){try{const v=localStorage.getItem("dd_"+k);return v?JSON.parse(v):d}catch(e){return d}},
+  set(k,v){try{localStorage.setItem("dd_"+k,JSON.stringify(v))}catch(e){}}
+};
+const $ = s => document.querySelector(s);
+const esc = s => String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const norm = s => String(s).toLowerCase().replace(/ё/g,"е").replace(/[\s\-'’_.]/g,"");
+const clamp = (x,a,b) => Math.max(a,Math.min(b,x));
+const fmt = n => n.toLocaleString("ru-RU");
+
+const INFO = {};
+for (const line of HERO_TABLE.trim().split("\n")){
+  const [k,pos,tags,al] = line.split("|");
+  INFO[k] = {pos:pos.split("").map(Number),tags:tags||"",al:(al||"").split(",").filter(Boolean)};
+}
+
+let settings = Object.assign({}, DEFAULTS, LS.get("settings2",{}));
+settings.tags = Object.assign({}, DEFAULTS.tags, settings.tags||{});
+let state = Object.assign({ours:[],enemy:[],bans:[],mode:"ours"}, LS.get("draft",{}));
+let H = {}, LIST = [], heroStatsMeta = null, SZ = null, SP = null, SD = null, PST = null, SZKEY = null;
+const szCache = {};
+
+function save(){ LS.set("draft",state); LS.set("settings2",settings); }
+
+function posFromRoles(roles){
+  const r = roles||[], out = [];
+  if (r.includes("Carry")) out.push(1);
+  if (r.includes("Nuker")||r.includes("Escape")) out.push(2);
+  if (r.includes("Initiator")||r.includes("Durable")) out.push(3);
+  if (r.includes("Support")) out.push(4,5);
+  const u = [...new Set(out)];
+  return u.length ? u : [1,2,3,4,5];
+}
+
+function applyPositions(){
+  for (const h of LIST){
+    h.posAuto = null;
+    const arr = SP && SP.heroes && SP.heroes[h.id];
+    if (!arr) continue;
+    const tot = arr.reduce((s,x)=>s+(x?x[0]:0),0);
+    if (tot < 200) continue;
+    const ps = [1,2,3,4,5].filter(p=>arr[p-1] && arr[p-1][0]/tot >= 0.10).sort((a,b)=>arr[b-1][0]-arr[a-1][0]);
+    if (ps.length) h.posAuto = ps;
+  }
+}
+const posOf = h => h.posAuto || h.pos;
+
+function buildHeroes(data){
+  H = {}; LIST = [];
+  for (const d of data){
+    if (!d || !d.id) continue;
+    const short = String(d.name||"").replace("npc_dota_hero_","");
+    const info = INFO[short];
+    const name = d.localized_name || short;
+    const h = {id:d.id,name,short,img:d.img?IMG_HOST+d.img:"",pos:info?info.pos:posFromRoles(d.roles),tags:info?info.tags:"",raw:d,known:!!info};
+    h.keys = [name, short, ...(info?info.al:[])].map(norm);
+    h.initials = name.split(/[\s-]+/).map(w=>w[0]).join("").slice(0,3).toUpperCase();
+    H[d.id] = h; LIST.push(h);
+  }
+  LIST.sort((a,b)=>a.name.localeCompare(b.name));
+}
+
+function rawStat(h){
+  if (PST){ const x = PST.all[h.id] || [0,0]; return {p:x[0],w:x[1],wr:x[0]?x[1]/x[0]*100:0}; }
+  const d = h.raw, r = settings.rank;
+  let p = 0, w = 0;
+  const add = i => { p += d[i+"_pick"]||0; w += d[i+"_win"]||0; };
+  if (r === "all") for (let i=1;i<=8;i++) add(i);
+  else if (r === "pro") { p = d.pro_pick||0; w = d.pro_win||0; }
+  else if (r === "8") { add(7); add(8); }
+  else add(r);
+  return {p,w,wr:p?w/p*100:0};
+}
+
+function pair(a,b,kind){
+  if (!SZ || !SZ.heroes) return null;
+  const A = SZ.heroes[a]; let x = A && A[kind] && A[kind][b];
+  if (x && x[0]) return {m:x[0],wr:x[1]/x[0]*100};
+  const B = SZ.heroes[b]; x = B && B[kind] && B[kind][a];
+  if (x && x[0]) return {m:x[0],wr:kind==="v"?100-x[1]/x[0]*100:x[1]/x[0]*100};
+  return null;
+}
+
+function pic(h, cls){
+  const img = h.img ? `<img src="${esc(h.img)}" alt="" loading="lazy" onerror="this.remove()">` : "";
+  return `<div class="pic ${cls||""}">${esc(h.initials)}${img}</div>`;
+}
+
+function unavailable(){
+  return new Set([...state.ours.map(x=>x.id),...state.enemy.map(x=>x.id),...state.bans]);
+}
+
+function autoPos(h, team){
+  const used = new Set(state[team].map(x=>x.pos).filter(Boolean));
+  for (const p of posOf(h)) if (!used.has(p)) return p;
+  if (team === "enemy") return null;
+  for (let p=1;p<=5;p++) if (!used.has(p)) return p;
+  return null;
+}
+
+function addHero(id, team, pos){
+  const h = H[id]; if (!h) return;
+  if (unavailable().has(id)) return;
+  if (team === "ban") { state.bans.push(id); }
+  else {
+    if (state[team].length >= 5) { flashSearch(team==="ours"?"В нашей команде уже 5 героев":"У врагов уже 5 героев"); return; }
+    const p = pos || autoPos(h, team);
+    if (p) for (const x of state[team]) if (x.pos === p) x.pos = null;
+    state[team].push({id, pos:p||null});
+  }
+  save(); renderAll();
+}
+
+function removeHero(team, idx){
+  if (team === "ban") state.bans.splice(idx,1); else state[team].splice(idx,1);
+  save(); renderAll();
+}
+
+function setPos(team, idx, p){
+  const list = state[team], cur = list[idx];
+  if (cur.pos === p) { cur.pos = null; }
+  else {
+    const other = list.find((x,i)=>i!==idx && x.pos===p);
+    if (other) other.pos = cur.pos;
+    cur.pos = p;
+  }
+  save(); renderAll();
+}
+
+function flashSearch(msg){
+  const el = $("#search"); el.value = ""; el.placeholder = msg;
+  setTimeout(()=>{el.placeholder="Поиск: пудж, am, сф, инвок…"},2500);
+}
+
+/* ---------- рендер ---------- */
+function renderSlots(team){
+  const box = $("#"+team+"Slots"), list = state[team];
+  let html = "";
+  for (let i=0;i<5;i++){
+    const s = list[i];
+    if (!s) { html += `<div class="slot empty">пусто</div>`; continue; }
+    const h = H[s.id]; if (!h) continue;
+    let chips = "";
+    for (let p=1;p<=5;p++) chips += `<button class="${s.pos===p?"on":""}" title="${POS_NAME[p]}" data-act="pos" data-team="${team}" data-i="${i}" data-p="${p}">${p}</button>`;
+    html += `<div class="slot">${pic(h)}<div class="nm" title="${esc(h.name)}">${esc(h.name)}</div><div class="pos">${chips}</div><button class="x" title="Убрать" data-act="rm" data-team="${team}" data-i="${i}">✕</button></div>`;
+  }
+  box.innerHTML = html;
+}
+
+function renderBans(){
+  $("#banList").innerHTML = state.bans.length
+    ? state.bans.map((id,i)=>H[id]?`<div class="banchip">${pic(H[id])}${esc(H[id].name)}<button class="x" data-act="rm" data-team="ban" data-i="${i}">✕</button></div>`:"").join("")
+    : `<span class="small">Пока никого</span>`;
+}
+
+function renderModes(){
+  const n = {ours:state.ours.length,enemy:state.enemy.length,ban:state.bans.length};
+  const label = {ours:`Добавить нам (${n.ours}/5)`,enemy:`Добавить врагам (${n.enemy}/5)`,ban:`Забанить (${n.ban})`};
+  document.querySelectorAll("#modes button").forEach(b=>{b.classList.toggle("on",b.dataset.mode===state.mode);b.textContent=label[b.dataset.mode];});
+}
+
+function filtered(){
+  const q = norm($("#search").value);
+  if (!q) return LIST;
+  const starts = [], inc = [];
+  for (const h of LIST){
+    if (h.keys.some(k=>k.startsWith(q))) starts.push(h);
+    else if (h.keys.some(k=>k.includes(q))) inc.push(h);
+  }
+  return starts.concat(inc);
+}
+
+function renderGrid(){
+  const un = unavailable(), list = filtered(), ctx = context();
+  let firstMarked = false, html = "";
+  for (const h of list){
+    const st = rawStat(h), off = un.has(h.id);
+    let cls = "tile" + (off?" off":"");
+    if (!off && !firstMarked && $("#search").value.trim()) { cls += " first"; firstMarked = true; }
+    const wr = st.p ? `<span class="${st.wr>=50?"good":"bad"}">${st.wr.toFixed(1)}%</span>` : `<span class="small">нет данных</span>`;
+    html += `<button class="${cls}" data-act="add" data-id="${h.id}" title="${esc(h.name)} — позиции ${posOf(h).join(", ")}">${pic(h)}<span class="tn">${esc(h.name)}</span><span class="tw">${tierBadge(ctx.tier0[h.id])} ${wr}</span></button>`;
+  }
+  $("#grid").innerHTML = html || `<div class="small">Никого не нашёл</div>`;
+}
+
+function context(){
+  const st = {}; let total = 0, cnt = 0;
+  for (const h of LIST){ const s = rawStat(h); st[h.id] = s; total += s.p; if (s.p > 0) cnt++; }
+  const mean = cnt ? total/cnt : 1;
+  const posMean = {};
+  const sp = !!(SP && SP.heroes);
+  if (sp) for (let p=1;p<=5;p++){
+    let t = 0, c = 0;
+    for (const h of LIST){ const x = SP.heroes[h.id] && SP.heroes[h.id][p-1]; if (x && x[0] > 0){ t += x[0]; c++; } }
+    posMean[p] = c ? t/c : 1;
+  }
+  const has = {p:0,g:0,r:0,l:0};
+  for (const o of state.ours){
+    const h = H[o.id]; if (!h) continue;
+    for (const t of h.tags){ if (t === "r" && o.pos !== 1 && o.pos !== 2) continue; has[t]++; }
+  }
+  const ctx = {st,total,mean,posMean,has,sz:!!(SZ&&SZ.heroes),sp};
+  const all = [];
+  for (const h of LIST){ const m = metaFor(h,0,ctx); if (m) all.push({id:h.id,pts:m.pts}); }
+  ctx.tier0 = tierMap(all);
+  return ctx;
+}
+
+// Мета-рейтинг героя (как тир на d2pt): винрейт + популярность.
+// p = 0 — общий по герою, p = 1..5 — на конкретной позиции (если есть данные STRATZ по позициям).
+function metaFor(h, p, ctx){
+  if (p && ctx.sp){
+    const x = SP.heroes[h.id] && SP.heroes[h.id][p-1];
+    if (x && x[0] >= 100){
+      const wr = x[1]/x[0]*100, rel = x[0]/ctx.posMean[p];
+      return {wr, m:x[0], pts:(wr-50) + 1.5*clamp(Math.log2(rel),-2,2), positional:true};
+    }
+  }
+  const st = ctx.st[h.id];
+  if (!st || st.p < 30) return null;
+  const rel = st.p/ctx.mean;
+  return {wr:st.wr, m:st.p, pts:(st.wr-50) + 1.5*clamp(Math.log2(rel),-2,2), positional:false};
+}
+
+function tierMap(entries){
+  const s = entries.slice().sort((a,b)=>b.pts-a.pts), n = s.length || 1, out = {};
+  s.forEach((e,i)=>{ const q = i/n; out[e.id] = q<0.06?"S":q<0.20?"A":q<0.45?"B":q<0.70?"C":"D"; });
+  return out;
+}
+const tierBadge = t => t ? `<span class="tier t${t}" title="Тир по мете">${t}</span>` : "";
+
+function score(h, p, ctx, tier){
+  const mt = metaFor(h,p,ctx);
+  if (!mt) return null;
+  const wr = mt.wr, base = ctx.st[h.id] ? ctx.st[h.id].wr : wr;
+  let pts = mt.pts;
+  const why = [], hard = [];
+  why.push({t:`WR ${wr.toFixed(1)}%${mt.positional?" на этой позиции":""}`,k:wr>=50?"good":"bad"});
+  why.push({t:`${fmt(mt.m)} игр`,k:""});
+  if (ctx.sz){
+    for (const e of state.enemy){
+      const pr = pair(h.id,e.id,"v"); if (!pr || pr.m < settings.minGames) continue;
+      const d = pr.wr - base, w = (p===2 && e.pos===2) ? 1.5 : 1;
+      pts += d*w*0.8;
+      const en = H[e.id] ? H[e.id].name : "?";
+      if (pr.wr >= settings.hardWr) hard.push({n:en,wr:pr.wr,m:pr.m});
+      else if (d >= 1.5) why.push({t:`контрит ${en}: ${pr.wr.toFixed(1)}% (${fmt(pr.m)} игр)`,k:"good"});
+      else if (d <= -1.5) why.push({t:`слаб против ${en}: ${pr.wr.toFixed(1)}%`,k:"bad"});
+    }
+    for (const a of state.ours){
+      const pr = pair(h.id,a.id,"w"); if (!pr || pr.m < settings.minGames) continue;
+      const d = pr.wr - base; pts += d*0.6;
+      const an = H[a.id] ? H[a.id].name : "?";
+      if (d >= 1.5) why.push({t:`синергия с ${an}: ${pr.wr.toFixed(1)}% (${fmt(pr.m)} игр)`,k:"good"});
+      else if (d <= -1.5) why.push({t:`плохо вместе с ${an}: ${pr.wr.toFixed(1)}%`,k:"bad"});
+    }
+  }
+  const T = settings.tags;
+  if (T.p && h.tags.includes("p")){ const n = ctx.has.p; pts += n===0?1.5:n===1?0.6:0.2; why.push({t:TAG_NAME.p,k:"tag"}); }
+  if (T.g && h.tags.includes("g")){ pts += ctx.has.g===0?0.8:0.3; why.push({t:TAG_NAME.g,k:"tag"}); }
+  if (T.r && h.tags.includes("r") && (p === 1 || p === 2)){ pts += ctx.has.r===0?1.0:0.3; why.push({t:TAG_NAME.r,k:"tag"}); }
+  if (T.l && h.tags.includes("l")){ pts += 0.6; why.push({t:TAG_NAME.l,k:"tag"}); }
+  if (posOf(h)[0] === p) pts += 0.5;
+  const ok = wr >= 50 || (settings.hard && hard.length > 0);
+  if (!ok) return null;
+  return {h,p,pts,wr,why,hard,tier};
+}
+
+function recCard(r){
+  const h = r.h;
+  const chips = [];
+  for (const x of r.hard) chips.push(`<span class="chip hard">жёсткий контрпик ${esc(x.n)}: ${x.wr.toFixed(1)}% (${fmt(x.m)} игр)</span>`);
+  for (const w of r.why) chips.push(`<span class="chip ${w.k}">${esc(w.t)}</span>`);
+  return `<button class="rec" data-act="pick" data-id="${h.id}" data-p="${r.p}" title="Нажми, чтобы взять этого героя">${pic(h)}<div class="body"><div class="top">${tierBadge(r.tier)}<span class="rn">${esc(h.name)}</span><span class="rp">поз. ${r.p} · ${POS_NAME[r.p]}</span><span class="sc">${r.pts>=0?"+":""}${r.pts.toFixed(1)}</span></div><div class="chips">${chips.join("")}</div></div></button>`;
+}
+
+function renderRecs(){
+  const notes = [];
+  if (!LIST.length){ $("#recs").innerHTML = ""; return; }
+  const ctx = context();
+  const rankName = RANKS.find(r=>r[0]===settings.rank)[1];
+  notes.push(`Мета по рангу «${rankName}». Тир S/A/B/C/D — как на d2pt: винрейт плюс популярность.`);
+  if (PST){
+    const f = d => new Date(d*1000).toLocaleDateString("ru-RU",{day:"2-digit",month:"2-digit",timeZone:"UTC"});
+    notes.push(`Статистика STRATZ за ${PST.n} дн. (${f(PST.from)}–${f(PST.to)}).` + (PST.n <= 2 ? " Дней мало — цифры пока шумные." : ""));
+  } else if (SD) notes.push("За выбранный период у STRATZ пока нет данных — показываю OpenDota.");
+  else notes.push("Мета пока от OpenDota за её стандартный период (может включать старый патч). Выбор периода заработает после подключения STRATZ.");
+  if (ctx.sp) notes.push("Винрейт по позициям: STRATZ. Позиции героев тоже берутся из реальных игр.");
+  else notes.push("Пока винрейт общий по герою, без разделения по позициям. По позициям появится после подключения STRATZ.");
+  if (!ctx.sz) notes.push("Контрпики и синергия пока выключены: нет данных STRATZ.");
+  else notes.push(`Пары героев: STRATZ (${STRATZ_LABEL[SZKEY]||SZKEY}), учитываю только пары от ${fmt(settings.minGames)} игр.`);
+  if (settings.rank === "pro") notes.push("На про-сцене мало игр, винрейты шумные. Для пабов лучше выбрать свой ранг.");
+  notes.push(settings.hard ? `Герои с WR ниже 50% скрыты, кроме жёстких контрпиков (от ${settings.hardWr}% против врага).` : "Герои с WR ниже 50% скрыты.");
+  $("#notes").innerHTML = notes.map(n=>`<div class="note">${esc(n)}</div>`).join("");
+
+  if (state.ours.length >= 5){ $("#recs").innerHTML = `<div class="empty-recs">Наша команда собрана. Удачной игры!</div>`; return; }
+  const taken = new Set(state.ours.map(x=>x.pos).filter(Boolean));
+  const open = [1,2,3,4,5].filter(p=>!taken.has(p));
+  const un = unavailable();
+  const per = {}, best = {};
+  for (const p of open){
+    const pool = LIST.filter(h=>settings.offrole || posOf(h).includes(p));
+    const tiers = tierMap(pool.map(h=>{ const m = metaFor(h,p,ctx); return m ? {id:h.id,pts:m.pts} : null; }).filter(Boolean));
+    const arr = [];
+    for (const h of pool){
+      if (un.has(h.id)) continue;
+      const r = score(h,p,ctx,tiers[h.id]); if (r) arr.push(r);
+    }
+    arr.sort((a,b)=>b.pts-a.pts);
+    per[p] = arr;
+    for (const r of arr) if (!best[r.h.id] || best[r.h.id].pts < r.pts) best[r.h.id] = r;
+  }
+  const top = Object.values(best).sort((a,b)=>b.pts-a.pts).slice(0,5);
+  let html = `<div class="openpos">Свободные позиции: ${open.map(p=>`<b>${p}</b> ${POS_NAME[p]}`).join(" · ")}</div>`;
+  html += `<h3>Лучший пик сейчас</h3>` + (top.length ? top.map(recCard).join("") : `<div class="empty-recs">Нет подходящих героев.</div>`);
+  for (const p of open){
+    html += `<h3>Позиция ${p} — ${POS_NAME[p]}</h3>`;
+    const list = per[p].slice(0,settings.perPos);
+    html += list.length ? list.map(recCard).join("") : `<div class="empty-recs">Нет героев с WR от 50% на эту позицию.</div>`;
+  }
+  $("#recs").innerHTML = html;
+}
+
+function renderStatus(){
+  const parts = [];
+  if (heroStatsMeta){
+    const d = new Date(heroStatsMeta.t);
+    parts.push(`OpenDota: <b>${d.toLocaleDateString("ru-RU")} ${d.toLocaleTimeString("ru-RU",{hour:"2-digit",minute:"2-digit"})}</b>`);
+    if (heroStatsMeta.stale) parts.push(`<span class="warn">не удалось обновить, показываю сохранённые данные</span>`);
+  }
+  const szu = (SZ && SZ.updated) || (SD && SD.updated);
+  if (szu) parts.push(`STRATZ: <b>${new Date(szu).toLocaleDateString("ru-RU")}</b>`);
+  else parts.push(`STRATZ: <b>нет данных</b>`);
+  parts.push(`Ранг: <b>${RANKS.find(r=>r[0]===settings.rank)[1]}</b>`);
+  $("#status").innerHTML = parts.join(" · ");
+}
+
+function renderAll(){
+  renderSlots("ours"); renderSlots("enemy"); renderBans(); renderModes(); renderGrid(); renderRecs(); renderStatus();
+}
+
+/* ---------- данные ---------- */
+async function loadHeroStats(force){
+  const cached = LS.get("hs",null);
+  if (!force && cached && Date.now()-cached.t < 6*3600e3) return cached;
+  try {
+    const r = await fetch(OPENDOTA);
+    if (!r.ok) throw new Error("HTTP "+r.status);
+    const data = await r.json();
+    if (!Array.isArray(data) || !data.length) throw new Error("пустой ответ");
+    const v = {t:Date.now(),data};
+    LS.set("hs",v);
+    return v;
+  } catch(e){
+    if (cached) { cached.stale = true; return cached; }
+    throw e;
+  }
+}
+
+// Складывает дневную статистику STRATZ за выбранный период.
+// Слот 0 — все позиции, 1..5 — конкретная позиция.
+function buildPeriod(){
+  PST = null; SP = null;
+  if (SD && SD.heroes && Array.isArray(SD.days) && SD.days.length){
+    let idx;
+    if (settings.period === "patch"){
+      const t = Date.parse((settings.patchDate||DEFAULTS.patchDate)+"T00:00:00Z")/1000;
+      idx = SD.days.map((d,i)=>d>=t?i:-1).filter(i=>i>=0);
+    } else {
+      idx = SD.days.map((d,i)=>[d,i]).sort((a,b)=>b[0]-a[0]).slice(0,+settings.period||7).map(x=>x[1]);
+    }
+    if (idx.length){
+      const all = {}, pos = {};
+      for (const id in SD.heroes){
+        const slots = SD.heroes[id];
+        const sum = s => { let m=0,w=0; const arr = slots[s]||[]; for (const i of idx){ const x = arr[i]; if (x){ m+=x[0]; w+=x[1]; } } return [m,w]; };
+        all[id] = sum(0); pos[id] = [1,2,3,4,5].map(sum);
+      }
+      const ds = idx.map(i=>SD.days[i]);
+      PST = {all,n:idx.length,from:Math.min(...ds),to:Math.max(...ds)};
+      SP = {heroes:pos,updated:SD.updated};
+    }
+  }
+  applyPositions();
+}
+
+async function fetchJson(url){
+  try { const r = await fetch(url,{cache:"no-cache"}); if (r.ok) return await r.json(); } catch(e){}
+  return null;
+}
+async function loadStratz(){
+  const key = STRATZ_BRACKET[settings.rank] || "ALL";
+  const base = (settings.dataUrl||"data").replace(/\/+$/,"");
+  const ck = base+"|"+key;
+  if (!(ck in szCache)){
+    const [m,d] = await Promise.all([fetchJson(`${base}/matchups-${key}.json`), fetchJson(`${base}/daily-${key}.json`)]);
+    szCache[ck] = {m:m&&m.heroes?m:null, d:d&&d.heroes?d:null};
+  }
+  SZ = szCache[ck].m; SD = szCache[ck].d; SZKEY = key;
+  buildPeriod();
+}
+
+async function init(force){
+  $("#status").textContent = "Загрузка данных…";
+  try {
+    heroStatsMeta = await loadHeroStats(force);
+    buildHeroes(heroStatsMeta.data);
+  } catch(e){
+    $("#recs").innerHTML = `<div class="err">Не удалось скачать статистику с OpenDota (${esc(e.message||e)}).<br>Проверь интернет и нажми «Обновить данные».</div>`;
+    $("#status").textContent = "Нет данных";
+    return;
+  }
+  await loadStratz();
+  state.ours = state.ours.filter(x=>H[x.id]); state.enemy = state.enemy.filter(x=>H[x.id]); state.bans = state.bans.filter(id=>H[id]);
+  renderAll();
+}
+
+/* ---------- настройки ---------- */
+function fillSettings(){
+  $("#setRank").innerHTML = RANKS.map(([v,t])=>`<option value="${v}">${t}</option>`).join("");
+  $("#setRank").value = settings.rank;
+  $("#setMinGames").value = settings.minGames;
+  $("#setHard").checked = settings.hard;
+  $("#setHardWr").value = settings.hardWr;
+  $("#setOffrole").checked = settings.offrole;
+  $("#setPerPos").value = settings.perPos;
+  $("#setDataUrl").value = settings.dataUrl;
+  $("#setPeriod").value = settings.period;
+  $("#setPatchDate").value = settings.patchDate;
+  document.querySelectorAll("[data-tag]").forEach(c=>c.checked=!!settings.tags[c.dataset.tag]);
+}
+async function onSettings(){
+  const oldRank = settings.rank, oldUrl = settings.dataUrl;
+  settings.rank = $("#setRank").value;
+  settings.minGames = Math.max(1, +$("#setMinGames").value || DEFAULTS.minGames);
+  settings.hard = $("#setHard").checked;
+  settings.hardWr = clamp(+$("#setHardWr").value || DEFAULTS.hardWr, 50, 80);
+  settings.offrole = $("#setOffrole").checked;
+  settings.perPos = clamp(Math.round(+$("#setPerPos").value || DEFAULTS.perPos), 1, 10);
+  settings.dataUrl = $("#setDataUrl").value.trim() || "data";
+  settings.period = $("#setPeriod").value;
+  settings.patchDate = $("#setPatchDate").value || DEFAULTS.patchDate;
+  document.querySelectorAll("[data-tag]").forEach(c=>settings.tags[c.dataset.tag]=c.checked);
+  save();
+  buildPeriod();
+  renderAll();
+  if (oldRank !== settings.rank || oldUrl !== settings.dataUrl){ await loadStratz(); renderAll(); }
+}
+
+/* ---------- события ---------- */
+document.addEventListener("click", e=>{
+  const b = e.target.closest("[data-act]"); if (!b) return;
+  const act = b.dataset.act;
+  if (act === "add") { addHero(+b.dataset.id, state.mode); $("#search").value=""; renderGrid(); $("#search").focus(); }
+  else if (act === "pick") addHero(+b.dataset.id, "ours", +b.dataset.p);
+  else if (act === "rm") removeHero(b.dataset.team, +b.dataset.i);
+  else if (act === "pos") setPos(b.dataset.team, +b.dataset.i, +b.dataset.p);
+});
+$("#modes").addEventListener("click", e=>{
+  const b = e.target.closest("button"); if (!b) return;
+  state.mode = b.dataset.mode; save(); renderModes(); $("#search").focus();
+});
+$("#search").addEventListener("input", renderGrid);
+$("#search").addEventListener("keydown", e=>{
+  if (e.key === "Enter"){
+    const un = unavailable();
+    const h = filtered().find(x=>!un.has(x.id));
+    if (h && $("#search").value.trim()){ addHero(h.id, state.mode); $("#search").value=""; renderGrid(); }
+  } else if (e.key === "Escape"){ $("#search").value=""; renderGrid(); }
+});
+$("#btnSettings").addEventListener("click", ()=>{ const s=$("#settings"); s.hidden=!s.hidden; });
+$("#settings").addEventListener("change", onSettings);
+$("#btnRefresh").addEventListener("click", ()=>{ for (const k in szCache) delete szCache[k]; init(true); });
+$("#btnNew").addEventListener("click", ()=>{ state.ours=[]; state.enemy=[]; state.bans=[]; state.mode="ours"; save(); renderAll(); $("#search").focus(); });
+
+fillSettings();
+init(false);
+</script>
+</body>
+</html>

@@ -1,0 +1,29 @@
+name: Обновить данные STRATZ
+
+on:
+  schedule:
+    - cron: "17 20 * * *" # каждый день в 04:17 по Иркутску
+  workflow_dispatch: # кнопка «Run workflow» для ручного запуска
+
+permissions:
+  contents: write
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Скачать пары героев из STRATZ
+        run: node scripts/fetch-stratz.mjs
+        env:
+          STRATZ_TOKEN: ${{ secrets.STRATZ_TOKEN }}
+      - name: Сохранить в репозиторий
+        run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@users.noreply.github.com"
+          git add data
+          git diff --cached --quiet || git commit -m "Обновление данных STRATZ"
+          git push
