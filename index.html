@@ -82,6 +82,15 @@ h3{margin:14px 0 8px;font-size:13px;color:var(--muted);font-weight:600;text-tran
 .chip.tag{color:var(--tag);border-color:#2c3c66}
 .tier{display:inline-block;min-width:18px;text-align:center;font-size:11px;font-weight:800;padding:0 5px;border-radius:4px;margin-right:2px}
 .tier.tS{background:#e8566c;color:#fff}.tier.tA{background:#f2a65e;color:#2a1405}.tier.tB{background:#f2dc5d;color:#2a2405}.tier.tC{background:#b8e07a;color:#18250a}.tier.tD{background:#68c08a;color:#0a2514}
+.slot .sub{font-size:11px;color:var(--muted);font-weight:400}
+.an h3{margin-top:4px}
+.an-row{margin-bottom:12px}
+.an-head{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:4px;font-size:13px}
+.bar{display:flex;height:22px;border-radius:6px;overflow:hidden;font-size:12px;font-weight:700}
+.bar .bo{background:#2f7a45;color:#eafff0;display:flex;align-items:center;padding-left:8px;white-space:nowrap}
+.bar .be{background:#8a2f2a;color:#ffecea;display:flex;align-items:center;justify-content:flex-end;padding-right:8px;white-space:nowrap}
+.an-sub{margin-top:4px}.an-sub .vs{color:var(--gold)}
+.an-note{margin-top:8px}
 .chip.hard{color:#1a1405;background:var(--gold);border-color:var(--gold);font-weight:700}
 .empty-recs{color:var(--muted);font-size:13px;padding:6px 0}
 .err{color:var(--bad);padding:20px;text-align:center}
@@ -333,7 +342,7 @@ for (const line of HERO_TABLE.trim().split("\n")){
 let settings = Object.assign({}, DEFAULTS, LS.get("settings2",{}));
 settings.tags = Object.assign({}, DEFAULTS.tags, settings.tags||{});
 let state = Object.assign({ours:[],enemy:[],bans:[],mode:"ours"}, LS.get("draft",{}));
-let H = {}, LIST = [], heroStatsMeta = null, SZ = null, SP = null, SD = null, PST = null, SZKEY = null;
+let H = {}, LIST = [], heroStatsMeta = null, SZ = null, SP = null, SD = null, PST = null, LN = null, TD = null, SZKEY = null;
 const szCache = {};
 
 function save(){ LS.set("draft",state); LS.set("settings2",settings); }
@@ -407,6 +416,7 @@ function unavailable(){
 }
 
 function autoPos(h, team){
+  if (team === "enemy") return null; // позицию врага знаем только приблизительно — считаем по вероятностям
   const used = new Set(state[team].map(x=>x.pos).filter(Boolean));
   for (const p of posOf(h)) if (!used.has(p)) return p;
   if (team === "enemy") return null;
@@ -458,7 +468,12 @@ function renderSlots(team){
     const h = H[s.id]; if (!h) continue;
     let chips = "";
     for (let p=1;p<=5;p++) chips += `<button class="${s.pos===p?"on":""}" title="${POS_NAME[p]}" data-act="pos" data-team="${team}" data-i="${i}" data-p="${p}">${p}</button>`;
-    html += `<div class="slot">${pic(h)}<div class="nm" title="${esc(h.name)}">${esc(h.name)}</div><div class="pos">${chips}</div><button class="x" title="Убрать" data-act="rm" data-team="${team}" data-i="${i}">✕</button></div>`;
+    let sub = "";
+    if (team === "enemy" && !s.pos){
+      const pr = posProb(h), best = pr.indexOf(Math.max(...pr));
+      sub = `<div class="sub">обычно поз. ${best+1} · ${Math.round(pr[best]*100)}%</div>`;
+    }
+    html += `<div class="slot">${pic(h)}<div class="nm" title="${esc(h.name)}">${esc(h.name)}${sub}</div><div class="pos">${chips}</div><button class="x" title="Убрать" data-act="rm" data-team="${team}" data-i="${i}">✕</button></div>`;
   }
   box.innerHTML = html;
 }
@@ -515,7 +530,7 @@ function context(){
     const h = H[o.id]; if (!h) continue;
     for (const t of h.tags){ if (t === "r" && o.pos !== 1 && o.pos !== 2) continue; has[t]++; }
   }
-  const ctx = {st,total,mean,posMean,has,sz:!!(SZ&&SZ.heroes),sp};
+  const ctx = {st,total,mean,posMean,has,sz:!!(SZ&&SZ.heroes),sp,enemyP:teamProbs("enemy")};
   const all = [];
   for (const h of LIST){ const m = metaFor(h,0,ctx); if (m) all.push({id:h.id,pts:m.pts}); }
   ctx.tier0 = tierMap(all);
@@ -554,15 +569,15 @@ function score(h, p, ctx, tier){
   why.push({t:`WR ${wr.toFixed(1)}%${mt.positional?" на этой позиции":""}`,k:wr>=50?"good":"bad"});
   why.push({t:`${fmt(mt.m)} игр`,k:""});
   if (ctx.sz){
-    for (const e of state.enemy){
-      const pr = pair(h.id,e.id,"v"); if (!pr || pr.m < settings.minGames) continue;
-      const d = pr.wr - base, w = (p===2 && e.pos===2) ? 1.5 : 1;
+    state.enemy.forEach((e,k)=>{
+      const pr = pair(h.id,e.id,"v"); if (!pr || pr.m < settings.minGames) return;
+      const d = pr.wr - base, w = p===2 ? 1 + 0.5*ctx.enemyP[k][1] : 1;
       pts += d*w*0.8;
       const en = H[e.id] ? H[e.id].name : "?";
       if (pr.wr >= settings.hardWr) hard.push({n:en,wr:pr.wr,m:pr.m});
       else if (d >= 1.5) why.push({t:`контрит ${en}: ${pr.wr.toFixed(1)}% (${fmt(pr.m)} игр)`,k:"good"});
       else if (d <= -1.5) why.push({t:`слаб против ${en}: ${pr.wr.toFixed(1)}%`,k:"bad"});
-    }
+    });
     for (const a of state.ours){
       const pr = pair(h.id,a.id,"w"); if (!pr || pr.m < settings.minGames) continue;
       const d = pr.wr - base; pts += d*0.6;
@@ -609,7 +624,10 @@ function renderRecs(){
   notes.push(settings.hard ? `Герои с WR ниже 50% скрыты, кроме жёстких контрпиков (от ${settings.hardWr}% против врага).` : "Герои с WR ниже 50% скрыты.");
   $("#notes").innerHTML = notes.map(n=>`<div class="note">${esc(n)}</div>`).join("");
 
-  if (state.ours.length >= 5){ $("#recs").innerHTML = `<div class="empty-recs">Наша команда собрана. Удачной игры!</div>`; return; }
+  if (state.ours.length >= 5){
+    $("#recs").innerHTML = state.enemy.length >= 5 ? renderAnalysis(ctx) : `<div class="empty-recs">Наша команда собрана. Итоги драфта появятся, когда добавишь всех 5 врагов.</div>`;
+    return;
+  }
   const taken = new Set(state.ours.map(x=>x.pos).filter(Boolean));
   const open = [1,2,3,4,5].filter(p=>!taken.has(p));
   const un = unavailable();
@@ -635,6 +653,151 @@ function renderRecs(){
     html += list.length ? list.map(recCard).join("") : `<div class="empty-recs">Нет героев с WR от 50% на эту позицию.</div>`;
   }
   $("#recs").innerHTML = html;
+}
+
+/* ---------- позиции как вероятности ---------- */
+// Распределение позиций героя: из STRATZ за выбранный период, иначе из таблицы.
+function posProb(h){
+  const arr = SP && SP.heroes && SP.heroes[h.id];
+  if (arr){
+    const t = arr.reduce((s,x)=>s+(x?x[0]:0),0);
+    if (t >= 100) return [0,1,2,3,4].map(i=>(arr[i]?arr[i][0]:0)/t);
+  }
+  const ps = h.pos || [], out = [0,0,0,0,0];
+  if (!ps.length) return [.2,.2,.2,.2,.2];
+  if (ps.length === 1){ out[ps[0]-1] = 1; return out; }
+  out[ps[0]-1] = 0.6;
+  for (const p of ps.slice(1)) out[p-1] += 0.4/(ps.length-1);
+  return out;
+}
+// Вероятности позиций для всей команды: выставленные вручную позиции — точно,
+// остальные — по статистике, без «двух мидеров» в одной команде.
+function teamProbs(team){
+  const list = state[team];
+  const fixed = new Set(list.map(x=>x.pos).filter(Boolean));
+  const P = list.map(x=>{
+    if (x.pos) return [1,2,3,4,5].map(p=>p===x.pos?1:0);
+    const h = H[x.id]; if (!h) return [0,0,0,0,0];
+    const v = posProb(h).map((q,i)=>fixed.has(i+1)?0:q);
+    const s = v.reduce((a,b)=>a+b,0);
+    return s ? v.map(q=>q/s) : v;
+  });
+  for (let i=0;i<5;i++){
+    if (fixed.has(i+1)) continue;
+    const s = P.reduce((a,x,k)=>a+(list[k].pos?0:x[i]),0);
+    if (s > 1) P.forEach((x,k)=>{ if (!list[k].pos) x[i] /= s; });
+  }
+  return P;
+}
+
+/* ---------- итоги драфта ---------- */
+const L = p => { const q = Math.min(0.99, Math.max(0.01, p)); return Math.log(q/(1-q)); };
+const SIG = x => 1/(1+Math.exp(-x));
+
+function laneStat(a, b){
+  if (!LN || !LN.heroes) return null;
+  let x = LN.heroes[a] && LN.heroes[a][b];
+  if (x && x[0]) return {m:x[0], wr:(x[1]+x[2]/2)/x[0]*100};
+  x = LN.heroes[b] && LN.heroes[b][a];
+  if (x && x[0]) return {m:x[0], wr:(x[3]+x[2]/2)/x[0]*100};
+  return null;
+}
+
+// Сумма вкладов героев в «логит» переоценивает силу драфта (игроки решают больше, чем пики),
+// поэтому сжимаем: на реальных данных случайные драфты дают примерно 40–60%.
+const DRAFT_K = 0.45;
+
+function analyzeDraft(ctx){
+  const wr = id => (ctx.st[id] && ctx.st[id].p ? ctx.st[id].wr : 50)/100;
+  const O = state.ours.map(x=>x.id), E = state.enemy.map(x=>x.id);
+  let meta = 0;
+  for (const a of O) meta += L(wr(a));
+  for (const b of E) meta -= L(wr(b));
+  let syn = 0, ctr = 0, synN = 0, ctrN = 0;
+  if (ctx.sz){
+    const team = (T, sign) => {
+      for (let i=0;i<T.length;i++) for (let j=i+1;j<T.length;j++){
+        const pr = pair(T[i],T[j],"w"); if (!pr || pr.m < settings.minGames) continue;
+        syn += sign * 0.5 * (L(pr.wr/100) - L(wr(T[i])) - L(wr(T[j]))); synN++;
+      }
+    };
+    team(O,1); team(E,-1);
+    for (const a of O) for (const b of E){
+      const pr = pair(a,b,"v"); if (!pr || pr.m < settings.minGames) continue;
+      ctr += 0.5 * (L(pr.wr/100) - L(wr(a)) + L(wr(b))); ctrN++;
+    }
+  }
+  const pp = x => (SIG(DRAFT_K*x)-0.5)*100;
+  const res = {win:SIG(DRAFT_K*(meta+syn+ctr))*100, parts:{meta:pp(meta), syn:pp(syn), ctr:pp(ctr)}, synN, ctrN};
+
+  // линии: наша лёгкая (1+5) против их сложной (3+4), мид против мида, наша сложная (3+4) против их лёгкой (1+5)
+  const PO = teamProbs("ours"), PE = teamProbs("enemy");
+  const lanes = [
+    {name:"Лёгкая линия", our:[1,5], their:[3,4]},
+    {name:"Мид", our:[2], their:[2]},
+    {name:"Сложная линия", our:[3,4], their:[1,5]},
+  ];
+  res.lanes = lanes.map(ln=>{
+    const inLane = (P,k,set) => set.reduce((s,p)=>s+P[k][p-1],0);
+    const who = (team, P, set) => {
+      const all = state[team].map((x,k)=>({n:H[x.id]?H[x.id].name:"?", q:inLane(P,k,set)})).sort((a,b)=>b.q-a.q);
+      const sure = all.filter(x=>x.q>=0.3);
+      return (sure.length ? sure : all.slice(0,1)).map(x=>x.q>=0.95?x.n:`${x.n} (${Math.round(x.q*100)}%)`);
+    };
+    let sw = 0, sv = 0;
+    if (LN){
+      state.ours.forEach((a,i)=>{ const qa = inLane(PO,i,ln.our); if (qa < 0.05) return;
+        state.enemy.forEach((b,j)=>{ const qb = inLane(PE,j,ln.their); if (qb < 0.05) return;
+          const s = laneStat(a.id,b.id); if (!s || s.m < 50) return;
+          sw += qa*qb; sv += qa*qb*s.wr; });
+      });
+    }
+    return {name:ln.name, ours:who("ours",PO,ln.our), theirs:who("enemy",PE,ln.their), val: sw >= 0.3 ? sv/sw : null};
+  });
+
+  // стадии игры по длительности матча
+  const phase = k => {
+    if (!TD || !TD.heroes) return null;
+    let s = 0, n = 0;
+    const w = id => { const x = TD.heroes[id] && TD.heroes[id][k]; if (x && x[0] >= 100){ n++; return x[1]/x[0]; } return wr(id); };
+    for (const a of O) s += L(w(a));
+    for (const b of E) s -= L(w(b));
+    return n >= 5 ? SIG(DRAFT_K*s)*100 : null;
+  };
+  res.phases = [
+    {name:"Ранняя игра (до 25 мин)", val:phase("e")},
+    {name:"Мид-гейм (25–40 мин)", val:phase("m")},
+    {name:"Лейт (40+ мин)", val:phase("l")},
+  ];
+  return res;
+}
+
+function anRow(title, val, sub){
+  if (val == null) return `<div class="an-row"><div class="an-head"><span>${esc(title)}</span><span class="small">нет данных</span></div>${sub||""}</div>`;
+  const o = Math.round(val), d = val - 50;
+  const verdict = Math.abs(d) < 1.5 ? `<span class="small">примерно равно</span>` : d > 0 ? `<b class="good">Мы лучше</b>` : `<b class="bad">Враги лучше</b>`;
+  return `<div class="an-row"><div class="an-head"><span>${esc(title)}</span>${verdict}</div><div class="bar"><div class="bo" style="width:${clamp(o,8,92)}%">Мы ${o}%</div><div class="be" style="width:${clamp(100-o,8,92)}%">${100-o}%</div></div>${sub||""}</div>`;
+}
+
+function renderAnalysis(ctx){
+  const a = analyzeDraft(ctx);
+  const f = x => `${x>=0?"+":""}${x.toFixed(1)}%`;
+  let html = `<div class="an"><h3>Итоги драфта</h3>`;
+  const parts = [`<span class="chip">мета ${f(a.parts.meta)}</span>`];
+  if (ctx.sz){ parts.push(`<span class="chip">синергия ${f(a.parts.syn)}</span>`, `<span class="chip">контрпики ${f(a.parts.ctr)}</span>`); }
+  html += anRow("Драфт в целом (шанс на победу)", a.win, `<div class="chips">${parts.join("")}</div>`);
+  for (const ln of a.lanes){
+    const sub = `<div class="small an-sub">${esc(ln.ours.join(", ")||"—")} <span class="vs">против</span> ${esc(ln.theirs.join(", ")||"—")}</div>`;
+    html += anRow(ln.name, ln.val, sub);
+  }
+  for (const ph of a.phases) html += anRow(ph.name, ph.val);
+  const notes = [];
+  if (!ctx.sz) notes.push("без контрпиков и синергии — нет данных STRATZ");
+  if (!LN) notes.push("линии появятся после обновления данных STRATZ");
+  if (!TD) notes.push("стадии игры появятся после обновления данных STRATZ");
+  notes.push("это оценка по статистике, а не гарантия: игру решают игроки");
+  html += `<div class="small an-note">${esc(notes.join(" · "))}</div></div>`;
+  return html;
 }
 
 function renderStatus(){
@@ -709,10 +872,10 @@ async function loadStratz(){
   const base = (settings.dataUrl||"data").replace(/\/+$/,"");
   const ck = base+"|"+key;
   if (!(ck in szCache)){
-    const [m,d] = await Promise.all([fetchJson(`${base}/matchups-${key}.json`), fetchJson(`${base}/daily-${key}.json`)]);
-    szCache[ck] = {m:m&&m.heroes?m:null, d:d&&d.heroes?d:null};
+    const [m,d,l,t] = await Promise.all(["matchups","daily","lane","time"].map(n=>fetchJson(`${base}/${n}-${key}.json`)));
+    szCache[ck] = {m:m&&m.heroes?m:null, d:d&&d.heroes?d:null, l:l&&l.heroes?l:null, t:t&&t.heroes?t:null};
   }
-  SZ = szCache[ck].m; SD = szCache[ck].d; SZKEY = key;
+  SZ = szCache[ck].m; SD = szCache[ck].d; LN = szCache[ck].l; TD = szCache[ck].t; SZKEY = key;
   buildPeriod();
 }
 
