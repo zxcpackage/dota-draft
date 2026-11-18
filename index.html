@@ -409,7 +409,7 @@ function applyPositions(){
     if (!arr) continue;
     const tot = arr.reduce((s,x)=>s+(x?x[0]:0),0);
     if (tot < 200) continue;
-    const ps = [1,2,3,4,5].filter(p=>arr[p-1] && arr[p-1][0]/tot >= 0.10).sort((a,b)=>arr[b-1][0]-arr[a-1][0]);
+    const ps = [1,2,3,4,5].filter(p=>arr[p-1] && arr[p-1][0]/tot >= 0.15).sort((a,b)=>arr[b-1][0]-arr[a-1][0]);
     if (ps.length) h.posAuto = ps;
   }
 }
@@ -591,6 +591,15 @@ function context(){
 
 // Мета-рейтинг героя (как тир на d2pt): винрейт + популярность.
 // p = 0 — общий по герою, p = 1..5 — на конкретной позиции (если есть данные STRATZ по позициям).
+// Сила героя в мете. Винрейт «с поправкой на выборку»: к играм героя добавляются SHRINK игр с винрейтом 50%,
+// поэтому 57% на 860 играх (часто — несколько игроков-специалистов) весит примерно как 52,5%,
+// а 52,7% на 40 000 игр почти не меняется. Плюс популярность — как в тирах d2pt.
+const SHRINK = 1500;
+function metaPts(w, m, rel){
+  const adj = (w + 0.5*SHRINK)/(m + SHRINK)*100;
+  return (adj-50)*1.2 + 2*clamp(Math.log2(Math.max(rel,1e-6)),-3,2);
+}
+
 function metaFor(h, p, ctx){
   if (p && ctx.sp){
     // Есть статистика по позициям — используем ТОЛЬКО её. Если на этой позиции у героя мало игр,
@@ -598,12 +607,12 @@ function metaFor(h, p, ctx){
     const x = SP.heroes[h.id] && SP.heroes[h.id][p-1];
     if (!x || x[0] < settings.minGames) return null;
     const wr = x[1]/x[0]*100, rel = x[0]/ctx.posMean[p];
-    return {wr, m:x[0], pts:(wr-50) + 1.5*clamp(Math.log2(rel),-2,2), positional:true};
+    return {wr, m:x[0], pts:metaPts(x[1], x[0], rel), positional:true};
   }
   const st = ctx.st[h.id];
   if (!st || st.p < 30) return null;
   const rel = st.p/ctx.mean;
-  return {wr:st.wr, m:st.p, pts:(st.wr-50) + 1.5*clamp(Math.log2(rel),-2,2), positional:false};
+  return {wr:st.wr, m:st.p, pts:metaPts(st.w, st.p, rel), positional:false};
 }
 
 function tierMap(entries){
