@@ -57,19 +57,33 @@ query Matchups($heroId: Short!, $brackets: [RankBracketBasicEnum]) {
 const CHECK = process.argv.includes("--check");
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
+const isBusy = (errors) =>
+  errors.some((e) => {
+    const code = String(e?.extensions?.code || "");
+    return /BUSY|TIMEOUT|RATE/i.test(code) || /temporarily unavailable|capacity|try again|retry/i.test(String(e?.message || ""));
+  });
+
 async function gql(variables, query = QUERY) {
-  for (let attempt = 1; attempt <= 6; attempt++) {
-    const res = await fetch(API, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${TOKEN}`,
-        "User-Agent": "STRATZ_API",
-      },
-      body: JSON.stringify({ query, variables }),
-    });
+  const MAX = 8;
+  for (let attempt = 1; attempt <= MAX; attempt++) {
+    const wait = 5000 * attempt; // 5, 10, 15 … 40 секунд
+    let res;
+    try {
+      res = await fetch(API, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${TOKEN}`,
+          "User-Agent": "STRATZ_API",
+        },
+        body: JSON.stringify({ query, variables }),
+      });
+    } catch (e) {
+      console.warn(`Сеть: ${e.message}, жду ${wait / 1000} с…`);
+      await sleep(wait);
+      continue;
+    }
     if (res.status === 429 || res.status >= 500) {
-      const wait = 3000 * attempt;
       console.warn(`STRATZ ответил ${res.status}, жду ${wait / 1000} с и пробую снова…`);
       await sleep(wait);
       continue;
@@ -81,10 +95,17 @@ async function gql(variables, query = QUERY) {
     } catch {
       throw new Error(`STRATZ вернул не JSON (HTTP ${res.status}): ${text.slice(0, 300)}`);
     }
-    if (json.errors) throw new Error("Ошибка запроса GraphQL: " + JSON.stringify(json.errors).slice(0, 1500));
+    if (json.errors) {
+      if (isBusy(json.errors) && attempt < MAX) {
+        console.warn(`STRATZ перегружен (попытка ${attempt}/${MAX}), жду ${wait / 1000} с…`);
+        await sleep(wait);
+        continue;
+      }
+      throw new Error("Ошибка запроса GraphQL: " + JSON.stringify(json.errors).slice(0, 1500));
+    }
     return json.data;
   }
-  throw new Error("STRATZ слишком долго отвечает 429/5xx — попробуй позже.");
+  throw new Error("STRATZ так и не ответил после нескольких попыток — попробуй позже.");
 }
 
 const pack = (arr) =>
@@ -100,21 +121,30 @@ const heroIds = (await heroesRes.json()).map((h) => h.id).sort((a, b) => a - b);
 console.log(`Героев: ${heroIds.length}`);
 
 await mkdir("data", { recursive: true });
+let saved = 0; // сколько файлов удалось обновить
 
 for (const [key, brackets] of Object.entries(BRACKETS)) {
   const out = { updated: new Date().toISOString(), bracket: key, source: "STRATZ", heroes: {} };
   const ids = CHECK ? heroIds.slice(0, 1) : heroIds;
+  let failed = 0;
   for (const id of ids) {
     const vars = { heroId: id };
     if (brackets) vars.brackets = brackets;
-    const data = await gql(vars);
+    let data;
+    try {
+      data = await gql(vars);
+    } catch (e) {
+      failed++;
+      console.warn(`Герой ${id} (${key}) пропущен: ${e.message.slice(0, 200)}`);
+      continue;
+    }
     const adv = data?.heroStats?.heroVsHeroMatchup?.advantage?.[0];
     if (!adv) {
       console.warn(`Нет данных для героя ${id} (${key})`);
       continue;
     }
     out.heroes[id] = { w: pack(adv.with), v: pack(adv.vs) };
-    await sleep(350); // не упираемся в лимиты бесплатного токена
+    await sleep(600); // не нагружаем STRATZ и не упираемся в лимиты бесплатного токена
   }
   if (CHECK) {
     const h = Object.values(out.heroes)[0];
@@ -123,8 +153,14 @@ for (const [key, brackets] of Object.entries(BRACKETS)) {
     console.log("  против врагов:", Object.entries(h?.v || {}).slice(0, 3));
     break;
   }
+  const got = Object.keys(out.heroes).length;
+  if (got < ids.length * 0.5) {
+    console.warn(`${key}: скачано только ${got} из ${ids.length} героев — файл не обновляю, оставляю прошлые данные`);
+    continue;
+  }
   await writeFile(`data/matchups-${key}.json`, JSON.stringify(out));
-  console.log(`${key}: сохранено ${Object.keys(out.heroes).length} героев`);
+  saved++;
+  console.log(`${key}: сохранено ${got} героев` + (failed ? ` (пропущено ${failed})` : ""));
 }
 
 // ---------- статистика по дням ----------
@@ -145,7 +181,7 @@ try {
         else if (day > 1e12) day = Math.floor(day / 1000);
         if (!Number.isNaN(day)) rows.push([slot, day, r.heroId, r.matchCount || 0, r.winCount || 0]);
       }
-      await sleep(350);
+      await sleep(600);
     }
     const days = [...new Set(rows.map((r) => r[1]))].sort((a, b) => a - b);
     const di = new Map(days.map((d, i) => [d, i]));
@@ -160,9 +196,16 @@ try {
       console.log(`По дням работает: ${days.length} дней, ${Object.keys(heroes).length} героев. Пример:`, Object.entries(heroes)[0]?.[1]?.[0]?.slice(-3));
       break;
     }
+    saved++;
     await writeFile(`data/daily-${key}.json`, JSON.stringify({ updated: new Date().toISOString(), bracket: key, source: "STRATZ", days, heroes }));
     console.log(`По дням ${key}: ${days.length} дней, ${Object.keys(heroes).length} героев`);
   }
 } catch (e) {
   console.error("ОШИБКА при загрузке статистики по дням (пары героев сохранены):", e.message);
 }
+
+if (!CHECK && saved === 0) {
+  console.error("Не удалось обновить ни одного файла — STRATZ, скорее всего, перегружен. Запусти ещё раз позже.");
+  process.exit(1);
+}
+console.log(`Готово, обновлено файлов: ${saved}`);
