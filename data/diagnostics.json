@@ -1,0 +1,165 @@
+{
+  "started": "2026-11-18T22:14:35.531Z",
+  "sections": {
+    "matchups": {
+      "ALL": {
+        "heroes": 127,
+        "failed": 0
+      },
+      "HERALD_GUARDIAN": {
+        "heroes": 127,
+        "failed": 0
+      },
+      "CRUSADER_ARCHON": {
+        "heroes": 127,
+        "failed": 0
+      },
+      "lastError": "STRATZ так и не ответил после нескольких попыток — попробуй позже.",
+      "LEGEND_ANCIENT": {
+        "heroes": 114,
+        "failed": 13
+      },
+      "DIVINE_IMMORTAL": {
+        "heroes": 121,
+        "failed": 0
+      }
+    },
+    "daily": {
+      "ALL": {
+        "days": 30,
+        "heroes": 127
+      },
+      "HERALD_GUARDIAN": {
+        "days": 30,
+        "heroes": 127
+      },
+      "CRUSADER_ARCHON": {
+        "days": 30,
+        "heroes": 127
+      },
+      "LEGEND_ANCIENT": {
+        "days": 30,
+        "heroes": 127
+      },
+      "DIVINE_IMMORTAL": {
+        "days": 30,
+        "heroes": 127
+      }
+    },
+    "time": {
+      "ALL": {
+        "rows": 4572,
+        "heroes": 127,
+        "timeSample": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10,
+          11
+        ]
+      },
+      "HERALD_GUARDIAN": {
+        "rows": 4572,
+        "heroes": 127,
+        "timeSample": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10,
+          11
+        ]
+      },
+      "CRUSADER_ARCHON": {
+        "rows": 4572,
+        "heroes": 127,
+        "timeSample": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10,
+          11
+        ]
+      },
+      "LEGEND_ANCIENT": {
+        "rows": 4572,
+        "heroes": 127,
+        "timeSample": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10,
+          11
+        ]
+      },
+      "DIVINE_IMMORTAL": {
+        "rows": 4572,
+        "heroes": 127,
+        "timeSample": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10,
+          11
+        ]
+      }
+    },
+    "lane": {
+      "ALL": {
+        "heroes": 127,
+        "failed": 0
+      },
+      "HERALD_GUARDIAN": {
+        "heroes": 127,
+        "failed": 0
+      },
+      "CRUSADER_ARCHON": {
+        "heroes": 127,
+        "failed": 0
+      },
+      "LEGEND_ANCIENT": {
+        "heroes": 127,
+        "failed": 0
+      },
+      "DIVINE_IMMORTAL": {
+        "heroes": 127,
+        "failed": 0
+      }
+    }
+  },
+  "finished": "2026-11-18T23:12:28.676Z"
+}
