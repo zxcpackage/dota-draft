@@ -91,6 +91,24 @@ h3{margin:14px 0 8px;font-size:13px;color:var(--muted);font-weight:600;text-tran
 .bar .be{background:#8a2f2a;color:#ffecea;display:flex;align-items:center;justify-content:flex-end;padding-right:8px;white-space:nowrap}
 .an-sub{margin-top:4px}.an-sub .vs{color:var(--gold)}
 .an-note{margin-top:8px}
+.pairpos{display:flex;flex-wrap:wrap;gap:4px;margin-bottom:6px}
+.pairpos button{font-size:11px;padding:2px 8px;border-radius:999px;background:#12151b}
+.pairpos button.on{background:var(--gold);color:#1a1405;border-color:var(--gold);font-weight:700}
+.rec.pair{display:grid;grid-template-columns:1fr auto 1fr;gap:8px;align-items:center}
+.rec.pair .pp{display:flex;gap:8px;align-items:center;min-width:0}
+.rec.pair .pc{min-width:0;font-size:13px}
+.rec.pair .plus{color:var(--gold);font-weight:800}
+.rec.pair .psc{grid-column:1/-1;display:flex;gap:8px;align-items:center}
+.likely{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:6px;margin-bottom:4px}
+.likely .lk{display:flex;gap:8px;align-items:center;background:var(--panel2);border-radius:8px;padding:5px;font-size:12.5px;border:1px solid #4a2a28}
+.likely .pic{width:48px;height:28px}
+.comp{background:var(--panel2);border-radius:9px;padding:8px 10px}
+.comp .cr{display:grid;grid-template-columns:1fr 70px 70px;gap:8px;align-items:center;font-size:12px;padding:2px 0}
+.comp .ch{color:var(--muted);font-size:11px}
+.dots i{display:inline-block;width:9px;height:9px;border-radius:50%;background:#2a2f3a;margin-right:3px}
+.dots i.o{background:var(--ours)}.dots i.e{background:var(--enemy)}.dots i.half{opacity:.45}
+.chint{font-size:12px;padding:6px 9px;margin-top:6px;background:var(--panel2);border-radius:0}
+.chint.bad{border-left:3px solid var(--enemy)}.chint.tag{border-left:3px solid var(--tag)}
 .chip.hard{color:#1a1405;background:var(--gold);border-color:var(--gold);font-weight:700}
 .empty-recs{color:var(--muted);font-size:13px;padding:6px 0}
 .err{color:var(--bad);padding:20px;text-align:center}
@@ -341,7 +359,7 @@ for (const line of HERO_TABLE.trim().split("\n")){
 
 let settings = Object.assign({}, DEFAULTS, LS.get("settings2",{}));
 settings.tags = Object.assign({}, DEFAULTS.tags, settings.tags||{});
-let state = Object.assign({ours:[],enemy:[],bans:[],mode:"ours"}, LS.get("draft",{}));
+let state = Object.assign({ours:[],enemy:[],bans:[],mode:"ours",pairPos:"any"}, LS.get("draft",{}));
 let H = {}, LIST = [], heroStatsMeta = null, SZ = null, SP = null, SD = null, PST = null, LN = null, TD = null, SZKEY = null;
 const szCache = {};
 
@@ -530,7 +548,7 @@ function context(){
     const h = H[o.id]; if (!h) continue;
     for (const t of h.tags){ if (t === "r" && o.pos !== 1 && o.pos !== 2) continue; has[t]++; }
   }
-  const ctx = {st,total,mean,posMean,has,sz:!!(SZ&&SZ.heroes),sp,enemyP:teamProbs("enemy")};
+  const ctx = {st,total,mean,posMean,has,sz:!!(SZ&&SZ.heroes),sp,enemyP:teamProbs("enemy"),ourComp:teamComp("ours"),likely:[]};
   const all = [];
   for (const h of LIST){ const m = metaFor(h,0,ctx); if (m) all.push({id:h.id,pts:m.pts}); }
   ctx.tier0 = tierMap(all);
@@ -591,6 +609,21 @@ function score(h, p, ctx, tier){
   if (T.g && h.tags.includes("g")){ pts += ctx.has.g===0?0.8:0.3; why.push({t:TAG_NAME.g,k:"tag"}); }
   if (T.r && h.tags.includes("r") && (p === 1 || p === 2)){ pts += ctx.has.r===0?1.0:0.3; why.push({t:TAG_NAME.r,k:"tag"}); }
   if (T.l && h.tags.includes("l")){ pts += 0.6; why.push({t:TAG_NAME.l,k:"tag"}); }
+  if (ctx.sz && ctx.likely.length && state.enemy.length < 5){
+    let sw = 0, sv = 0; const good = [], badL = [];
+    for (const x of ctx.likely){
+      if (x.h.id === h.id) continue;
+      const pr = pair(h.id,x.h.id,"v"); if (!pr || pr.m < settings.minGames) continue;
+      const d = pr.wr - base; sw += x.w; sv += x.w*d;
+      if (d >= 2) good.push(x.h.name); else if (d <= -2) badL.push(x.h.name);
+    }
+    if (sw > 0){
+      const f = sv/sw; pts += f*1.2*Math.min(1,(5-state.enemy.length)/3);
+      if (f >= 1) why.push({t:`хорош против вероятных пиков врага${good.length?": "+good.slice(0,2).join(", "):""}`,k:"good"});
+      else if (f <= -1) why.push({t:`рискованно против вероятных пиков врага${badL.length?": "+badL.slice(0,2).join(", "):""}`,k:"bad"});
+    }
+  }
+  if (state.ours.length >= 2 && ctx.ourComp.ctrl < 1.5 && roles(h).includes("Disabler")){ pts += 0.4; why.push({t:"контроль (у нас его мало)",k:"tag"}); }
   if (posOf(h)[0] === p) pts += 0.5;
   const ok = wr >= 50 || (settings.hard && hard.length > 0);
   if (!ok) return null;
@@ -632,6 +665,7 @@ function renderRecs(){
   const open = [1,2,3,4,5].filter(p=>!taken.has(p));
   const un = unavailable();
   const per = {}, best = {};
+  ctx.likely = likelyEnemyPicks(ctx);
   for (const p of open){
     const pool = LIST.filter(h=>settings.offrole || posOf(h).includes(p));
     const tiers = tierMap(pool.map(h=>{ const m = metaFor(h,p,ctx); return m ? {id:h.id,pts:m.pts} : null; }).filter(Boolean));
@@ -647,12 +681,132 @@ function renderRecs(){
   const top = Object.values(best).sort((a,b)=>b.pts-a.pts).slice(0,5);
   let html = `<div class="openpos">Свободные позиции: ${open.map(p=>`<b>${p}</b> ${POS_NAME[p]}`).join(" · ")}</div>`;
   html += `<h3>Лучший пик сейчас</h3>` + (top.length ? top.map(recCard).join("") : `<div class="empty-recs">Нет подходящих героев.</div>`);
+  if (open.length >= 2){
+    const pairs = bestPairs(per, open, ctx);
+    const keys = ["any"]; for (let i=0;i<open.length;i++) for (let j=i+1;j<open.length;j++) keys.push(open[i]+"-"+open[j]);
+    const cur = keys.includes(state.pairPos) ? state.pairPos : "any";
+    html += `<h3>Лучшие пары на двойной пик</h3><div class="pairpos">` + keys.map(k=>`<button class="${cur===k?"on":""}" data-act="pairpos" data-k="${k}">${k==="any"?"любые позиции":"поз. "+k.replace("-"," + ")}</button>`).join("") + `</div>`;
+    html += pairs.length ? pairs.map(pairCard).join("") : `<div class="empty-recs">Нет подходящих пар.</div>`;
+  }
+  if (ctx.likely.length){
+    html += `<h3>Скорее всего враги ещё возьмут</h3><div class="likely">` + ctx.likely.slice(0,6).map(x=>`<div class="lk">${pic(x.h)}<div><div>${esc(x.h.name)}</div><div class="small">поз. ${x.p}</div></div></div>`).join("") + `</div><div class="small">Советы выше учитывают, как герой стоит против этих героев.</div>`;
+  }
   for (const p of open){
     html += `<h3>Позиция ${p} — ${POS_NAME[p]}</h3>`;
     const list = per[p].slice(0,settings.perPos);
     html += list.length ? list.map(recCard).join("") : `<div class="empty-recs">Нет героев с WR от 50% на эту позицию.</div>`;
   }
+  html += renderComposition();
   $("#recs").innerHTML = html;
+}
+
+/* ---------- составы команд ---------- */
+const ILLUSION = new Set(["phantom_lancer","naga_siren","terrorblade","chaos_knight","meepo","spectre"]);
+const INVIS = new Set(["riki","clinkz","bounty_hunter","weaver","nyx_assassin","invoker","mirana","sand_king","treant","broodmother"]);
+const HEAL = new Set(["necrolyte","huskar","alchemist","life_stealer","omniknight","oracle","dazzle","wisp","abaddon","chen"]);
+const roles = h => (h.raw && h.raw.roles) || [];
+const COMP = [
+  {k:"ctrl",   name:"Контроль",          f:h=>roles(h).includes("Disabler")?1:(roles(h).includes("Initiator")?0.5:0)},
+  {k:"magic",  name:"Магический урон",   f:h=>roles(h).includes("Nuker")?1:0},
+  {k:"carry",  name:"Физ. урон (керри)", f:h=>roles(h).includes("Carry")?1:0},
+  {k:"tank",   name:"Живучесть",         f:h=>roles(h).includes("Durable")?1:0},
+  {k:"push",   name:"Пуш",               f:h=>(roles(h).includes("Pusher")||h.tags.includes("p"))?1:0},
+  {k:"escape", name:"Мобильность",       f:h=>roles(h).includes("Escape")?1:0},
+];
+function teamComp(team){
+  const out = {}; for (const c of COMP) out[c.k] = 0;
+  for (const x of state[team]){ const h = H[x.id]; if (h) for (const c of COMP) out[c.k] += c.f(h); }
+  return out;
+}
+function compHints(){
+  const E = state.enemy.map(x=>H[x.id]).filter(Boolean), ec = teamComp("enemy"), oc = teamComp("ours");
+  const names = set => E.filter(h=>set.has(h.short)).map(h=>h.name);
+  const out = [];
+  if (ec.magic >= 3) out.push(["bad","У врага много магического урона — пригодятся Pipe of Insight, Glimmer Cape, BKB."]);
+  if (ec.ctrl >= 3.5) out.push(["bad","У врага много контроля — BKB, Linken's Sphere, Lotus Orb."]);
+  const il = names(ILLUSION); if (il.length) out.push(["bad",`Иллюзии и клоны (${il.join(", ")}) — нужен урон по площади: Battle Fury, Mjollnir, герои с AoE.`]);
+  const inv = names(INVIS); if (inv.length) out.push(["bad",`Невидимость (${inv.join(", ")}) — сентри, Dust of Appearance, Gem.`]);
+  const hl = names(HEAL); if (hl.length) out.push(["bad",`Сильный хил и реген (${hl.join(", ")}) — Spirit Vessel, Shiva's Guard, Eye of Skadi.`]);
+  if (ec.escape >= 3) out.push(["bad","Враги мобильные — нужен мгновенный контроль, Orchid или Nullifier."]);
+  if (state.ours.length >= 3 && oc.ctrl < 1.5) out.push(["tag","У нас мало контроля — стоит взять героя с оглушением."]);
+  if (state.ours.length >= 3 && oc.carry < 1) out.push(["tag","У нас нет явного керри — подумай, кто будет фармить на лейт."]);
+  if (state.ours.length >= 4 && oc.push < 1) out.push(["tag","Нечем ломать башни — пригодится герой с пушем."]);
+  return out;
+}
+function renderComposition(){
+  if (!state.ours.length && !state.enemy.length) return "";
+  const o = teamComp("ours"), e = teamComp("enemy");
+  const dots = (v,c) => { let s = ""; for (let i=1;i<=5;i++) s += `<i class="${v>=i?c:(v>=i-0.5?c+" half":"")}"></i>`; return s; };
+  let html = `<h3>Составы</h3><div class="comp"><div class="cr ch"><span></span><span>Мы</span><span>Враги</span></div>`;
+  for (const c of COMP) html += `<div class="cr"><span class="cn">${c.name}</span><span class="dots">${dots(o[c.k],"o")}</span><span class="dots">${dots(e[c.k],"e")}</span></div>`;
+  html += `</div>`;
+  const hs = compHints();
+  if (hs.length) html += hs.map(([k,t])=>`<div class="chint ${k}">${esc(t)}</div>`).join("") + `<div class="small" style="margin-top:6px">Предметы — общий ориентир, сверяй с текущим патчем.</div>`;
+  return html;
+}
+
+/* ---------- вероятные пики врага ---------- */
+// Кого враги, скорее всего, возьмут на свои свободные позиции:
+// популярные сильные герои + синергия с их пиками + контра наших героев.
+function likelyEnemyPicks(ctx){
+  if (state.enemy.length >= 5) return [];
+  const PE = ctx.enemyP, un = unavailable(), out = [];
+  for (let p=1;p<=5;p++){
+    const mass = Math.max(0, 1 - PE.reduce((s,x)=>s+x[p-1],0));
+    if (mass < 0.25) continue;
+    const arr = [];
+    for (const h of LIST){
+      if (un.has(h.id) || posProb(h)[p-1] < 0.15) continue;
+      const m = metaFor(h,p,ctx); if (!m || m.wr < 49) continue;
+      const base = ctx.st[h.id] ? ctx.st[h.id].wr : 50;
+      let s = m.pts;
+      if (ctx.sz){
+        for (const e of state.enemy){ const pr = pair(h.id,e.id,"w"); if (pr && pr.m >= settings.minGames) s += (pr.wr-base)*0.6; }
+        for (const o of state.ours){ const pr = pair(h.id,o.id,"v"); if (pr && pr.m >= settings.minGames) s += (pr.wr-base)*0.4; }
+      }
+      arr.push({h,p,s});
+    }
+    arr.sort((a,b)=>b.s-a.s);
+    arr.slice(0,3).forEach((x,i)=>out.push({...x, w:mass/(i+1)}));
+  }
+  const best = {};
+  for (const x of out) if (!best[x.h.id] || best[x.h.id].w < x.w) best[x.h.id] = x;
+  return Object.values(best).sort((a,b)=>b.w-a.w || b.s-a.s);
+}
+
+/* ---------- пары на двойной пик ---------- */
+function bestPairs(per, open, ctx){
+  if (open.length < 2) return [];
+  let sel = state.pairPos && state.pairPos !== "any" ? state.pairPos.split("-").map(Number) : null;
+  if (sel && !(open.includes(sel[0]) && open.includes(sel[1]))) sel = null;
+  const combos = [];
+  if (sel) combos.push(sel);
+  else for (let i=0;i<open.length;i++) for (let j=i+1;j<open.length;j++) combos.push([open[i],open[j]]);
+  const out = [];
+  for (const [p,q] of combos){
+    for (const a of per[p].slice(0,15)) for (const b of per[q].slice(0,15)){
+      if (a.h.id === b.h.id) continue;
+      let s = a.pts + b.pts, syn = null;
+      if (ctx.sz){
+        const pr = pair(a.h.id,b.h.id,"w");
+        if (pr && pr.m >= settings.minGames){ syn = pr.wr - (ctx.st[a.h.id].wr + ctx.st[b.h.id].wr - 50); s += syn; }
+      }
+      out.push({a,b,s,syn});
+    }
+  }
+  out.sort((x,y)=>y.s-x.s);
+  const res = [], cnt = {};
+  for (const x of out){
+    if ((cnt[x.a.h.id]||0) >= 2 || (cnt[x.b.h.id]||0) >= 2) continue;
+    res.push(x); cnt[x.a.h.id] = (cnt[x.a.h.id]||0)+1; cnt[x.b.h.id] = (cnt[x.b.h.id]||0)+1;
+    if (res.length >= 5) break;
+  }
+  return res;
+}
+function pairCard(x){
+  const one = r => `<div class="pp">${pic(r.h)}<div class="pc"><div>${tierBadge(r.tier)}<b>${esc(r.h.name)}</b></div><div class="small">поз. ${r.p} · WR ${r.wr.toFixed(1)}%</div></div></div>`;
+  const syn = x.syn == null ? `<span class="chip">синергия: мало игр</span>` : `<span class="chip ${x.syn>=1?"good":x.syn<=-1?"bad":""}">синергия пары ${x.syn>=0?"+":""}${x.syn.toFixed(1)}%</span>`;
+  return `<button class="rec pair" data-act="pickpair" data-a="${x.a.h.id}" data-pa="${x.a.p}" data-b="${x.b.h.id}" data-pb="${x.b.p}" title="Нажми, чтобы взять обоих">${one(x.a)}<div class="plus">+</div>${one(x.b)}<div class="psc"><span class="sc">${x.s>=0?"+":""}${x.s.toFixed(1)}</span>${syn}</div></button>`;
 }
 
 /* ---------- позиции как вероятности ---------- */
@@ -797,7 +951,7 @@ function renderAnalysis(ctx){
   if (!TD) notes.push("стадии игры появятся после обновления данных STRATZ");
   notes.push("это оценка по статистике, а не гарантия: игру решают игроки");
   html += `<div class="small an-note">${esc(notes.join(" · "))}</div></div>`;
-  return html;
+  return html + renderComposition();
 }
 
 function renderStatus(){
@@ -934,6 +1088,8 @@ document.addEventListener("click", e=>{
   else if (act === "pick") addHero(+b.dataset.id, "ours", +b.dataset.p);
   else if (act === "rm") removeHero(b.dataset.team, +b.dataset.i);
   else if (act === "pos") setPos(b.dataset.team, +b.dataset.i, +b.dataset.p);
+  else if (act === "pairpos"){ state.pairPos = b.dataset.k; save(); renderRecs(); }
+  else if (act === "pickpair"){ addHero(+b.dataset.a, "ours", +b.dataset.pa); addHero(+b.dataset.b, "ours", +b.dataset.pb); }
 });
 $("#modes").addEventListener("click", e=>{
   const b = e.target.closest("button"); if (!b) return;
