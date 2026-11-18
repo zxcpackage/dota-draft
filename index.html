@@ -356,6 +356,7 @@ kez|12|l|кез
 largo|45||ларго
 `;
 
+const APP_VERSION = "19.11 08:00"; // видно в шапке — так легко проверить, что браузер показывает свежую версию
 const OPENDOTA = "https://api.opendota.com/api/heroStats";
 const IMG_HOST = "https://cdn.cloudflare.steamstatic.com";
 const RANKS = [["all","Все ранги"],["1","Рекрут"],["2","Страж"],["3","Рыцарь"],["4","Герой"],["5","Легенда"],["6","Властелин"],["7","Божество"],["8","Титан"],["pro","Про-сцена"]];
@@ -1115,6 +1116,7 @@ function renderStatus(){
   else parts.push(`STRATZ: <b>нет данных</b>`);
   if (settings.period === "patch"){ const ps = patchStart(); parts.push(`Патч: <b>${esc(ps.name)}</b>`); }
   parts.push(`Ранг: <b>${RANKS.find(r=>r[0]===settings.rank)[1]}</b>`);
+  parts.push(`<span title="Версия сайта">версия ${APP_VERSION}</span>`);
   $("#status").innerHTML = parts.join(" · ");
 }
 
