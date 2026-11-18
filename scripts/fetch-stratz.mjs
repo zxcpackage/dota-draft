@@ -2,12 +2,13 @@
 //  1) пары героев (синергия и контрпики) → data/matchups-<ранг>.json
 //  2) игры и победы каждого героя по дням за последние 30 дней (всего и на каждой позиции)
 //     → data/daily-<ранг>.json; сайт сам складывает их за выбранный период
-//  3) винрейт героев по длительности матча: до 25 мин / 25–40 / 40+ → data/time-<ранг>.json
+//  3) по минутам: сколько матчей героя дожило до минуты t и сколько из них выиграно → data/time-<ранг>.json
+//     (сайт считает из этого, как герой играет в коротких, средних и долгих матчах)
 //  4) исходы линий герой против героя → data/lane-<ранг>.json
 //  + data/diagnostics.json — что скачалось, а что нет (и схема API, если запрос не подошёл)
 // Запуск: STRATZ_TOKEN=... node scripts/fetch-stratz.mjs
 // Проверка токена и запроса на одном герое: node scripts/fetch-stratz.mjs --check
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, writeFile, readFile } from "node:fs/promises";
 
 const TOKEN = process.env.STRATZ_TOKEN;
 if (!TOKEN) {
@@ -58,6 +59,19 @@ query Matchups($heroId: Short!, $brackets: [RankBracketBasicEnum]) {
 }`;
 
 const CHECK = process.argv.includes("--check");
+// Пары и линии STRATZ сам обновляет раз в неделю, поэтому качаем их не чаще раза в 3 дня
+// (иначе запуск идёт почти час). FORCE=1 — скачать всё заново.
+const FORCE = process.env.FORCE === "1" || process.env.FORCE === "true";
+const MAX_AGE_DAYS = 3;
+async function isFresh(file) {
+  if (FORCE) return false;
+  try {
+    const j = JSON.parse(await readFile(file, "utf8"));
+    return j.updated && Date.now() - Date.parse(j.updated) < MAX_AGE_DAYS * 86400e3 && j.heroes && Object.keys(j.heroes).length > 50;
+  } catch {
+    return false;
+  }
+}
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 const isBusy = (errors) =>
@@ -67,9 +81,9 @@ const isBusy = (errors) =>
   });
 
 async function gql(variables, query = QUERY) {
-  const MAX = 8;
+  const MAX = 6;
   for (let attempt = 1; attempt <= MAX; attempt++) {
-    const wait = 5000 * attempt; // 5, 10, 15 … 40 секунд
+    const wait = 4000 * attempt; // 4, 8, 12 … 24 секунды
     let res;
     try {
       res = await fetch(API, {
@@ -131,6 +145,11 @@ const note = (name, info) => { diag.sections[name] = { ...(diag.sections[name] |
 const isSchemaError = (e) => /Cannot query field|Unknown argument|Unknown type|GRAPHQL_VALIDATION|must have a selection|of required type|is not defined/i.test(String(e?.message || ""));
 
 for (const [key, brackets] of Object.entries(BRACKETS)) {
+  if (!CHECK && (await isFresh(`data/matchups-${key}.json`))) {
+    console.log(`Пары ${key}: свежие, пропускаю`);
+    note("matchups", { [key]: "fresh" });
+    continue;
+  }
   const out = { updated: new Date().toISOString(), bracket: key, source: "STRATZ", heroes: {} };
   const ids = CHECK ? heroIds.slice(0, 1) : heroIds;
   let failed = 0;
@@ -235,20 +254,20 @@ try {
     const data = await gql(vars, TIME_QUERY);
     const rows = data?.heroStats?.stats || [];
     const times = rows.map((r) => Number(r?.time)).filter((t) => !Number.isNaN(t));
-    const inSeconds = times.length && Math.max(...times) > 300; // если пришли секунды, а не минуты
+    const minutes = [...new Set(times)].sort((x, y) => x - y);
+    const mi = new Map(minutes.map((t, i) => [t, i]));
     const heroes = {};
     for (const r of rows) {
-      if (!r?.heroId || r.time == null) continue;
-      const min = inSeconds ? Number(r.time) / 60 : Number(r.time);
-      const ph = min < 25 ? "e" : min < 40 ? "m" : "l";
-      const h = (heroes[r.heroId] ||= { e: [0, 0], m: [0, 0], l: [0, 0] });
-      h[ph][0] += r.matchCount || 0;
-      h[ph][1] += r.winCount || 0;
+      if (!r?.heroId || r.time == null || !mi.has(Number(r.time))) continue;
+      const arr = (heroes[r.heroId] ||= minutes.map(() => [0, 0]));
+      const cell = arr[mi.get(Number(r.time))];
+      cell[0] += r.matchCount || 0;
+      cell[1] += r.winCount || 0;
     }
-    note("time", { [key]: { rows: rows.length, heroes: Object.keys(heroes).length, timeSample: [...new Set(times)].slice(0, 12) } });
+    note("time", { [key]: { rows: rows.length, heroes: Object.keys(heroes).length, minutes: [minutes[0], minutes[minutes.length - 1]] } });
     if (CHECK) { console.log("Время работает:", Object.entries(heroes)[0]); break; }
     if (Object.keys(heroes).length < 50) { console.warn(`Время ${key}: мало данных (${Object.keys(heroes).length} героев), не сохраняю`); continue; }
-    await writeFile(`data/time-${key}.json`, JSON.stringify({ updated: new Date().toISOString(), bracket: key, source: "STRATZ", heroes }));
+    await writeFile(`data/time-${key}.json`, JSON.stringify({ updated: new Date().toISOString(), bracket: key, source: "STRATZ", format: "minutes", minutes, heroes }));
     saved++;
     console.log(`Время ${key}: ${Object.keys(heroes).length} героев`);
     await sleep(600);
@@ -274,6 +293,11 @@ query Lane($heroId: Short!, $brackets: [RankBracketBasicEnum]) {
 }`;
 try {
   for (const [key, brackets] of Object.entries(BRACKETS)) {
+    if (!CHECK && (await isFresh(`data/lane-${key}.json`))) {
+      console.log(`Линии ${key}: свежие, пропускаю`);
+      note("lane", { [key]: "fresh" });
+      continue;
+    }
     const out = { updated: new Date().toISOString(), bracket: key, source: "STRATZ", heroes: {} };
     let failed = 0;
     for (const id of CHECK ? heroIds.slice(0, 1) : heroIds) {

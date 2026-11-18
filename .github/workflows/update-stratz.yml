@@ -4,26 +4,44 @@ on:
   schedule:
     - cron: "17 20 * * *" # каждый день в 04:17 по Иркутску
   workflow_dispatch: # кнопка «Run workflow» для ручного запуска
+    inputs:
+      force:
+        description: "Скачать заново всё, включая пары и линии (дольше)"
+        type: boolean
+        default: false
 
 permissions:
   contents: write
 
+# два запуска одновременно не идут: новый ждёт, пока закончится старый
+concurrency:
+  group: update-stratz
+  cancel-in-progress: false
+
 jobs:
   update:
     runs-on: ubuntu-latest
+    timeout-minutes: 90 # если STRATZ совсем лежит — не висим часами
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5
         with:
           node-version: 22
-      - name: Скачать пары героев из STRATZ
+      - name: Скачать данные из STRATZ
         run: node scripts/fetch-stratz.mjs
         env:
           STRATZ_TOKEN: ${{ secrets.STRATZ_TOKEN }}
+          FORCE: ${{ inputs.force }}
       - name: Сохранить в репозиторий
         run: |
           git config user.name "github-actions"
           git config user.email "github-actions@users.noreply.github.com"
           git add data
-          git diff --cached --quiet || git commit -m "Обновление данных STRATZ"
-          git push
+          git diff --cached --quiet && exit 0
+          git commit -m "Обновление данных STRATZ"
+          # если за время запуска в репозиторий что-то залили — подтягиваем и пробуем снова
+          for i in 1 2 3; do
+            git pull --rebase origin main && git push && exit 0
+            sleep 5
+          done
+          exit 1

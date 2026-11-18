@@ -109,6 +109,10 @@ h3{margin:14px 0 8px;font-size:13px;color:var(--muted);font-weight:600;text-tran
 .dots i.o{background:var(--ours)}.dots i.e{background:var(--enemy)}.dots i.half{opacity:.45}
 .chint{font-size:12px;padding:6px 9px;margin-top:6px;background:var(--panel2);border-radius:0}
 .chint.bad{border-left:3px solid var(--enemy)}.chint.tag{border-left:3px solid var(--tag)}
+#compCard{margin-top:12px}
+#compCard h3{margin-top:0}
+details.notes{margin-bottom:8px}
+details.notes summary{cursor:pointer;color:var(--muted);font-size:12px;margin-bottom:6px}
 .chip.hard{color:#1a1405;background:var(--gold);border-color:var(--gold);font-weight:700}
 .empty-recs{color:var(--muted);font-size:13px;padding:6px 0}
 .err{color:var(--bad);padding:20px;text-align:center}
@@ -178,6 +182,7 @@ h3{margin:14px 0 8px;font-size:13px;color:var(--muted);font-weight:600;text-tran
       </div>
       <div class="bans"><h3>Баны</h3><div class="banlist" id="banList"></div></div>
     </div>
+    <div class="card" id="compCard" hidden></div>
     <div class="card picker">
       <div class="modes" id="modes">
         <button data-mode="ours">Добавить нам</button>
@@ -234,7 +239,7 @@ tidehunter|3||тайд,tide
 witch_doctor|5|l|вд,wd,доктор
 lich|5||лич
 riki|41||рики
-enigma|34|p|энигма
+enigma|3|p|энигма
 tinker|2|g|тинкер
 sniper|21|pl|снайпер,снайп
 necrolyte|23|l|некр,necro,некрофос
@@ -598,7 +603,7 @@ function score(h, p, ctx, tier){
     });
     for (const a of state.ours){
       const pr = pair(h.id,a.id,"w"); if (!pr || pr.m < settings.minGames) continue;
-      const d = pr.wr - base; pts += d*0.6;
+      const d = pr.wr - base; pts += d*1.0;
       const an = H[a.id] ? H[a.id].name : "?";
       if (d >= 1.5) why.push({t:`синергия с ${an}: ${pr.wr.toFixed(1)}% (${fmt(pr.m)} игр)`,k:"good"});
       else if (d <= -1.5) why.push({t:`плохо вместе с ${an}: ${pr.wr.toFixed(1)}%`,k:"bad"});
@@ -646,7 +651,8 @@ function renderRecs(){
   notes.push(`Мета по рангу «${rankName}». Тир S/A/B/C/D — как на d2pt: винрейт плюс популярность.`);
   if (PST){
     const f = d => new Date(d*1000).toLocaleDateString("ru-RU",{day:"2-digit",month:"2-digit",timeZone:"UTC"});
-    notes.push(`Статистика STRATZ за ${PST.n} дн. (${f(PST.from)}–${f(PST.to)}).` + (PST.n <= 2 ? " Дней мало — цифры пока шумные." : ""));
+    if (PST.fallback) notes.push(`За выбранный период у STRATZ ещё нет данных — пока показываю последние ${PST.n} дн. (${f(PST.from)}–${f(PST.to)}).`);
+    else notes.push(`Статистика STRATZ за ${PST.n} дн. (${f(PST.from)}–${f(PST.to)}).` + (PST.n <= 2 ? " Дней мало — цифры пока шумные." : ""));
   } else if (SD) notes.push("За выбранный период у STRATZ пока нет данных — показываю OpenDota.");
   else notes.push("Мета пока от OpenDota за её стандартный период (может включать старый патч). Выбор периода заработает после подключения STRATZ.");
   if (ctx.sp) notes.push("Винрейт по позициям: STRATZ. Позиции героев тоже берутся из реальных игр.");
@@ -655,7 +661,7 @@ function renderRecs(){
   else notes.push(`Пары героев: STRATZ (${STRATZ_LABEL[SZKEY]||SZKEY}), учитываю только пары от ${fmt(settings.minGames)} игр.`);
   if (settings.rank === "pro") notes.push("На про-сцене мало игр, винрейты шумные. Для пабов лучше выбрать свой ранг.");
   notes.push(settings.hard ? `Герои с WR ниже 50% скрыты, кроме жёстких контрпиков (от ${settings.hardWr}% против врага).` : "Герои с WR ниже 50% скрыты.");
-  $("#notes").innerHTML = notes.map(n=>`<div class="note">${esc(n)}</div>`).join("");
+  $("#notes").innerHTML = `<details class="notes"><summary>Откуда данные и как считается</summary>${notes.map(n=>`<div class="note">${esc(n)}</div>`).join("")}</details>`;
 
   if (state.ours.length >= 5){
     $("#recs").innerHTML = state.enemy.length >= 5 ? renderAnalysis(ctx) : `<div class="empty-recs">Наша команда собрана. Итоги драфта появятся, когда добавишь всех 5 врагов.</div>`;
@@ -681,12 +687,17 @@ function renderRecs(){
   const top = Object.values(best).sort((a,b)=>b.pts-a.pts).slice(0,5);
   let html = `<div class="openpos">Свободные позиции: ${open.map(p=>`<b>${p}</b> ${POS_NAME[p]}`).join(" · ")}</div>`;
   html += `<h3>Лучший пик сейчас</h3>` + (top.length ? top.map(recCard).join("") : `<div class="empty-recs">Нет подходящих героев.</div>`);
-  if (open.length >= 2){
+  if (state.ours.length === 0 && open.length >= 2){
     const pairs = bestPairs(per, open, ctx);
     const keys = ["any"]; for (let i=0;i<open.length;i++) for (let j=i+1;j<open.length;j++) keys.push(open[i]+"-"+open[j]);
     const cur = keys.includes(state.pairPos) ? state.pairPos : "any";
     html += `<h3>Лучшие пары на двойной пик</h3><div class="pairpos">` + keys.map(k=>`<button class="${cur===k?"on":""}" data-act="pairpos" data-k="${k}">${k==="any"?"любые позиции":"поз. "+k.replace("-"," + ")}</button>`).join("") + `</div>`;
     html += pairs.length ? pairs.map(pairCard).join("") : `<div class="empty-recs">Нет подходящих пар.</div>`;
+  }
+  if (state.ours.length && ctx.sz){
+    const syn = bestSynergy(per, open, ctx);
+    const names = state.ours.map(x=>H[x.id]?H[x.id].name:"").filter(Boolean).join(", ");
+    html += `<h3>Лучше всего сочетаются с: ${esc(names)}</h3>` + (syn.length ? syn.map(recCard).join("") : `<div class="empty-recs">Нет пар с ${fmt(settings.minGames)}+ играми.</div>`);
   }
   if (ctx.likely.length){
     html += `<h3>Скорее всего враги ещё возьмут</h3><div class="likely">` + ctx.likely.slice(0,6).map(x=>`<div class="lk">${pic(x.h)}<div><div>${esc(x.h.name)}</div><div class="small">поз. ${x.p}</div></div></div>`).join("") + `</div><div class="small">Советы выше учитывают, как герой стоит против этих героев.</div>`;
@@ -696,7 +707,6 @@ function renderRecs(){
     const list = per[p].slice(0,settings.perPos);
     html += list.length ? list.map(recCard).join("") : `<div class="empty-recs">Нет героев с WR от 50% на эту позицию.</div>`;
   }
-  html += renderComposition();
   $("#recs").innerHTML = html;
 }
 
@@ -803,6 +813,22 @@ function bestPairs(per, open, ctx){
   }
   return res;
 }
+// Кандидаты, у которых лучшая синергия с уже взятыми нашими героями (с учётом меты на своей позиции).
+function bestSynergy(per, open, ctx){
+  const best = {};
+  for (const p of open) for (const r of per[p]){
+    let syn = 0, n = 0;
+    for (const a of state.ours){
+      const pr = pair(r.h.id, a.id, "w"); if (!pr || pr.m < settings.minGames) continue;
+      syn += pr.wr - (ctx.st[r.h.id].wr + (ctx.st[a.id] ? ctx.st[a.id].wr : 50) - 50); n++;
+    }
+    if (!n || syn <= 0) continue;
+    const v = syn*1.5 + r.pts*0.3;
+    if (!best[r.h.id] || best[r.h.id].v < v) best[r.h.id] = {...r, v, synSum:syn};
+  }
+  return Object.values(best).sort((a,b)=>b.v-a.v).slice(0,5);
+}
+
 function pairCard(x){
   const one = r => `<div class="pp">${pic(r.h)}<div class="pc"><div>${tierBadge(r.tier)}<b>${esc(r.h.name)}</b></div><div class="small">поз. ${r.p} · WR ${r.wr.toFixed(1)}%</div></div></div>`;
   const syn = x.syn == null ? `<span class="chip">синергия: мало игр</span>` : `<span class="chip ${x.syn>=1?"good":x.syn<=-1?"bad":""}">синергия пары ${x.syn>=0?"+":""}${x.syn.toFixed(1)}%</span>`;
@@ -850,10 +876,11 @@ const SIG = x => 1/(1+Math.exp(-x));
 
 function laneStat(a, b){
   if (!LN || !LN.heroes) return null;
+  // считаем только матчи, где исход линии известен (победа + ничья + поражение)
   let x = LN.heroes[a] && LN.heroes[a][b];
-  if (x && x[0]) return {m:x[0], wr:(x[1]+x[2]/2)/x[0]*100};
+  if (x){ const t = x[1]+x[2]+x[3]; if (t) return {m:t, wr:(x[1]+x[2]/2)/t*100}; }
   x = LN.heroes[b] && LN.heroes[b][a];
-  if (x && x[0]) return {m:x[0], wr:(x[3]+x[2]/2)/x[0]*100};
+  if (x){ const t = x[1]+x[2]+x[3]; if (t) return {m:t, wr:(x[3]+x[2]/2)/t*100}; }
   return null;
 }
 
@@ -909,20 +936,33 @@ function analyzeDraft(ctx){
     return {name:ln.name, ours:who("ours",PO,ln.our), theirs:who("enemy",PE,ln.their), val: sw >= 0.3 ? sv/sw : null};
   });
 
-  // стадии игры по длительности матча
-  const phase = k => {
-    if (!TD || !TD.heroes) return null;
-    let s = 0, n = 0;
-    const w = id => { const x = TD.heroes[id] && TD.heroes[id][k]; if (x && x[0] >= 100){ n++; return x[1]/x[0]; } return wr(id); };
-    for (const a of O) s += L(w(a));
-    for (const b of E) s -= L(w(b));
-    return n >= 5 ? SIG(DRAFT_K*s)*100 : null;
-  };
-  res.phases = [
-    {name:"Ранняя игра (до 25 мин)", val:phase("e")},
-    {name:"Мид-гейм (25–40 мин)", val:phase("m")},
-    {name:"Лейт (40+ мин)", val:phase("l")},
-  ];
+  // стадии игры: STRATZ даёт для каждой минуты t, сколько матчей героя дожило до неё и сколько из них выиграно.
+  // Разница между минутами = матчи, закончившиеся в этом промежутке.
+  res.phases = [];
+  if (TD && TD.format === "minutes" && Array.isArray(TD.minutes) && TD.minutes.length > 2){
+    const mins = TD.minutes, last = mins.length-1;
+    const at = t => { let i = mins.findIndex(m=>m>=t); return i < 0 ? last : i; };
+    const i0 = 0, i25 = at(25), iL = last;
+    const tail = mins[iL];
+    const seg = (id, from, to) => {
+      const arr = TD.heroes[id]; if (!arr) return null;
+      const A = arr[from], B = to == null ? [0,0] : arr[to];
+      const m = A[0]-B[0], w = A[1]-B[1];
+      return m >= 100 ? w/m : null;
+    };
+    const phase = (from, to) => {
+      let s = 0, n = 0;
+      const w = id => { const v = seg(id, from, to); if (v != null){ n++; return v; } return wr(id); };
+      for (const a of O) s += L(w(a));
+      for (const b of E) s -= L(w(b));
+      return n >= 5 ? SIG(DRAFT_K*s)*100 : null;
+    };
+    res.phases.push({name:`Короткая игра (до ${mins[i25]} мин)`, val:phase(i0, i25)});
+    res.phases.push({name:`Мид-гейм (${mins[i25]}–${tail} мин)`, val:phase(i25, iL)});
+    res.phases.push({name:`Долгая игра (${tail}+ мин)`, val:phase(iL, null)});
+  } else {
+    res.phases.push({name:"Короткая игра", val:null},{name:"Мид-гейм", val:null},{name:"Долгая игра", val:null});
+  }
   return res;
 }
 
@@ -951,7 +991,7 @@ function renderAnalysis(ctx){
   if (!TD) notes.push("стадии игры появятся после обновления данных STRATZ");
   notes.push("это оценка по статистике, а не гарантия: игру решают игроки");
   html += `<div class="small an-note">${esc(notes.join(" · "))}</div></div>`;
-  return html + renderComposition();
+  return html;
 }
 
 function renderStatus(){
@@ -968,7 +1008,13 @@ function renderStatus(){
   $("#status").innerHTML = parts.join(" · ");
 }
 
+function renderCompCard(){
+  const html = LIST.length ? renderComposition() : "";
+  const el = $("#compCard"); el.hidden = !html; el.innerHTML = html;
+}
+
 function renderAll(){
+  renderCompCard();
   renderSlots("ours"); renderSlots("enemy"); renderBans(); renderModes(); renderGrid(); renderRecs(); renderStatus();
 }
 
@@ -1002,6 +1048,11 @@ function buildPeriod(){
     } else {
       idx = SD.days.map((d,i)=>[d,i]).sort((a,b)=>b[0]-a[0]).slice(0,+settings.period||7).map(x=>x[1]);
     }
+    let fallback = false;
+    if (!idx.length){ // например, «С начала патча», а STRATZ ещё не выложил дни нового патча
+      idx = SD.days.map((d,i)=>[d,i]).sort((a,b)=>b[0]-a[0]).slice(0,7).map(x=>x[1]);
+      fallback = true;
+    }
     if (idx.length){
       const all = {}, pos = {};
       for (const id in SD.heroes){
@@ -1010,7 +1061,7 @@ function buildPeriod(){
         all[id] = sum(0); pos[id] = [1,2,3,4,5].map(sum);
       }
       const ds = idx.map(i=>SD.days[i]);
-      PST = {all,n:idx.length,from:Math.min(...ds),to:Math.max(...ds)};
+      PST = {all,n:idx.length,from:Math.min(...ds),to:Math.max(...ds),fallback};
       SP = {heroes:pos,updated:SD.updated};
     }
   }
