@@ -358,7 +358,7 @@ kez|12|l|кез
 largo|45||ларго
 `;
 
-const APP_VERSION = "19.11 08:22"; // видно в шапке — так легко проверить, что браузер показывает свежую версию
+const APP_VERSION = "19.11 08:25"; // видно в шапке — так легко проверить, что браузер показывает свежую версию
 const OPENDOTA = "https://api.opendota.com/api/heroStats";
 const IMG_HOST = "https://cdn.cloudflare.steamstatic.com";
 const RANKS = [["all","Все ранги"],["1","Рекрут"],["2","Страж"],["3","Рыцарь"],["4","Герой"],["5","Легенда"],["6","Властелин"],["7","Божество"],["8","Титан"],["pro","Про-сцена"]];
@@ -1058,13 +1058,15 @@ function analyzeDraft(ctx){
   if (TD && TD.format === "minutes" && Array.isArray(TD.minutes) && TD.minutes.length > 2){
     const mins = TD.minutes, last = mins.length-1;
     const at = t => { let i = mins.findIndex(m=>m>=t); return i < 0 ? last : i; };
-    const i0 = 0, i25 = at(25), iL = last;
+    // до 25 минут заканчивается лишь ~3% матчей — слишком мало, поэтому первая граница — 30 минут (~12% матчей)
+    const i0 = 0, i25 = at(30), iL = last;
     const tail = mins[iL];
     const seg = (id, from, to) => {
       const arr = TD.heroes[id]; if (!arr) return null;
       const A = arr[from], B = to == null ? [0,0] : arr[to];
       const m = A[0]-B[0], w = A[1]-B[1];
-      return m >= 100 ? w/m : null;
+      // та же поправка на выборку, что и в мете: редкие короткие игры не раздувают проценты
+      return m >= 100 ? (w + 0.5*SHRINK)/(m + SHRINK) : null;
     };
     const phase = (from, to) => {
       let s = 0, n = 0;
@@ -1073,7 +1075,7 @@ function analyzeDraft(ctx){
       for (const b of E) s -= L(w(b));
       return n >= 5 ? SIG(DRAFT_K*s)*100 : null;
     };
-    res.phases.push({name:`Короткая игра (до ${mins[i25]} мин)`, val:phase(i0, i25)});
+    res.phases.push({name:`Быстрая игра (до ${mins[i25]} мин)`, val:phase(i0, i25)});
     res.phases.push({name:`Мид-гейм (${mins[i25]}–${tail} мин)`, val:phase(i25, iL)});
     res.phases.push({name:`Долгая игра (${tail}+ мин)`, val:phase(iL, null)});
   } else {
