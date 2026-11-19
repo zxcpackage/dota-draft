@@ -356,7 +356,7 @@ kez|12|l|кез
 largo|45||ларго
 `;
 
-const APP_VERSION = "19.11 08:05"; // видно в шапке — так легко проверить, что браузер показывает свежую версию
+const APP_VERSION = "19.11 08:10"; // видно в шапке — так легко проверить, что браузер показывает свежую версию
 const OPENDOTA = "https://api.opendota.com/api/heroStats";
 const IMG_HOST = "https://cdn.cloudflare.steamstatic.com";
 const RANKS = [["all","Все ранги"],["1","Рекрут"],["2","Страж"],["3","Рыцарь"],["4","Герой"],["5","Легенда"],["6","Властелин"],["7","Божество"],["8","Титан"],["pro","Про-сцена"]];
@@ -364,7 +364,7 @@ const STRATZ_BRACKET = {all:"ALL","1":"HERALD_GUARDIAN","2":"HERALD_GUARDIAN","3
 const STRATZ_LABEL = {ALL:"все ранги",HERALD_GUARDIAN:"Рекрут–Страж",CRUSADER_ARCHON:"Рыцарь–Герой",LEGEND_ANCIENT:"Легенда–Властелин",DIVINE_IMMORTAL:"Божество–Титан"};
 const POS_NAME = {1:"Керри",2:"Мид",3:"Оффлейн",4:"Семи-саппорт",5:"Фулл-саппорт"};
 const TAG_NAME = {p:"урон по башням",g:"глобалка",r:"быстрый Рошан",l:"сильная линия"};
-const DEFAULTS = {rank:"7",minGames:150,hard:true,hardWr:55,tags:{p:true,g:true,r:true,l:true},offrole:false,perPos:5,threatMin:1000,dataUrl:"data",period:"patch",patchDate:"",patchKind:"any"};
+const DEFAULTS = {rank:"7",minGames:300,hard:true,hardWr:55,tags:{p:true,g:true,r:true,l:true},offrole:false,perPos:5,threatMin:1000,dataUrl:"data",period:"patch",patchDate:"",patchKind:"any"};
 
 const LS = {
   get(k,d){try{const v=localStorage.getItem("dd_"+k);return v?JSON.parse(v):d}catch(e){return d}},
@@ -387,6 +387,7 @@ settings.tags = Object.assign({}, DEFAULTS.tags, settings.tags||{});
 // переход на новые значения по умолчанию у тех, у кого уже сохранены старые настройки
 if ((settings.v||1) < 2){ settings.threatMin = 1000; settings.v = 2; }
 if (settings.v < 3){ settings.patchDate = ""; settings.patchKind = "any"; settings.v = 3; } // дата патча теперь определяется сама
+if (settings.v < 4){ settings.minGames = 300; settings.v = 4; } // порог для пар: 300 игр (точность винрейта примерно ±3%)
 let state = Object.assign({ours:[],enemy:[],bans:[],mode:"ours",pairPos:"any",recPos:"any",recSort:"total"}, LS.get("draft",{}));
 let H = {}, LIST = [], heroStatsMeta = null, SZ = null, SP = null, SD = null, PST = null, LN = null, TD = null, SZKEY = null, SZP = null, LNP = null, PAIR_BETA = 0, LANE_BETA = 0;
 const szCache = {};
