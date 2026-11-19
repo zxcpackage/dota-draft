@@ -187,9 +187,6 @@ details.notes summary{cursor:pointer;color:var(--muted);font-size:12px;margin-bo
   <label>Дата патча вручную — только если автоматика ошиблась (пусто = авто)
     <input type="date" id="setPatchDate">
   </label>
-  <label>Где лежат данные STRATZ (папка или ссылка)
-    <input type="text" id="setDataUrl" placeholder="data">
-  </label>
 </section>
 
 <main>
@@ -356,7 +353,7 @@ kez|12|l|кез
 largo|45||ларго
 `;
 
-const APP_VERSION = "19.11 08:10"; // видно в шапке — так легко проверить, что браузер показывает свежую версию
+const APP_VERSION = "19.11 08:15"; // видно в шапке — так легко проверить, что браузер показывает свежую версию
 const OPENDOTA = "https://api.opendota.com/api/heroStats";
 const IMG_HOST = "https://cdn.cloudflare.steamstatic.com";
 const RANKS = [["all","Все ранги"],["1","Рекрут"],["2","Страж"],["3","Рыцарь"],["4","Герой"],["5","Легенда"],["6","Властелин"],["7","Божество"],["8","Титан"],["pro","Про-сцена"]];
@@ -388,6 +385,7 @@ settings.tags = Object.assign({}, DEFAULTS.tags, settings.tags||{});
 if ((settings.v||1) < 2){ settings.threatMin = 1000; settings.v = 2; }
 if (settings.v < 3){ settings.patchDate = ""; settings.patchKind = "any"; settings.v = 3; } // дата патча теперь определяется сама
 if (settings.v < 4){ settings.minGames = 300; settings.v = 4; } // порог для пар: 300 игр (точность винрейта примерно ±3%)
+settings.dataUrl = "data"; // данные STRATZ всегда лежат в папке data рядом с сайтом
 let state = Object.assign({ours:[],enemy:[],bans:[],mode:"ours",pairPos:"any",recPos:"any",recSort:"total"}, LS.get("draft",{}));
 let H = {}, LIST = [], heroStatsMeta = null, SZ = null, SP = null, SD = null, PST = null, LN = null, TD = null, SZKEY = null, SZP = null, LNP = null, PAIR_BETA = 0, LANE_BETA = 0;
 const szCache = {};
@@ -1265,7 +1263,6 @@ function fillSettings(){
   $("#setHardWr").value = settings.hardWr;
   $("#setOffrole").checked = settings.offrole;
   $("#setPerPos").value = settings.perPos;
-  $("#setDataUrl").value = settings.dataUrl;
   $("#setPeriod").value = settings.period;
   $("#setPatchDate").value = settings.patchDate || "";
   $("#setPatchKind").value = settings.patchKind || "any";
@@ -1280,7 +1277,6 @@ async function onSettings(){
   settings.hardWr = clamp(+$("#setHardWr").value || DEFAULTS.hardWr, 50, 80);
   settings.offrole = $("#setOffrole").checked;
   settings.perPos = clamp(Math.round(+$("#setPerPos").value || DEFAULTS.perPos), 1, 10);
-  settings.dataUrl = $("#setDataUrl").value.trim() || "data";
   settings.period = $("#setPeriod").value;
   settings.patchDate = $("#setPatchDate").value || "";
   settings.patchKind = $("#setPatchKind").value;
