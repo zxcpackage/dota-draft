@@ -124,6 +124,12 @@ details.notes summary{cursor:pointer;color:var(--muted);font-size:12px;margin-bo
 .sorts button.on{background:#2c3c66;border-color:var(--tag);color:#dfe8ff;font-weight:700}
 .sorts button:disabled{opacity:.4;cursor:not-allowed}
 .sub-h{margin:6px 0 4px}
+.order{display:flex;align-items:center;gap:8px;margin:-2px 0 8px;flex-wrap:wrap}
+.ocs{display:flex;gap:3px}
+.oc{display:inline-block;width:16px;height:10px;border-radius:3px;border:1px solid}
+.oc.o{border-color:var(--ours)}.oc.e{border-color:var(--enemy)}
+.oc.o.done{background:var(--ours)}.oc.e.done{background:var(--enemy)}
+.oc.cur{outline:2px solid var(--gold);outline-offset:1px}
 .chip.hard{color:#1a1405;background:var(--gold);border-color:var(--gold);font-weight:700}
 .empty-recs{color:var(--muted);font-size:13px;padding:6px 0}
 .err{color:var(--bad);padding:20px;text-align:center}
@@ -164,6 +170,7 @@ details.notes summary{cursor:pointer;color:var(--muted);font-size:12px;margin-bo
     <label class="row"><input type="checkbox" data-tag="l"> сильной линией</label>
   </div>
   <div class="set-tags">
+    <label class="row"><input type="checkbox" id="setAutoOrder"> Сам переключать «нам / врагам» по очереди пиков (2-2-2-2-1-1)</label>
     <label class="row"><input type="checkbox" id="setOffrole"> Предлагать героев не на их обычных позициях</label>
     <label>Советов на каждую позицию
       <input type="number" id="setPerPos" min="1" max="8">
@@ -210,6 +217,7 @@ details.notes summary{cursor:pointer;color:var(--muted);font-size:12px;margin-bo
         <button data-mode="enemy">Добавить врагам</button>
         <button data-mode="ban">Забанить</button>
       </div>
+      <div class="order" id="order"></div>
       <input id="search" autocomplete="off" placeholder="Поиск: пудж, am, сф, инвок…">
       <div class="hint">Enter — добавить первого героя из списка. Позицию можно поменять кнопками 1–5 у героя.</div>
       <div id="grid"></div>
@@ -358,7 +366,7 @@ kez|12|l|кез
 largo|45||ларго
 `;
 
-const APP_VERSION = "19.11 08:35"; // видно в шапке — так легко проверить, что браузер показывает свежую версию
+const APP_VERSION = "19.11 08:40"; // видно в шапке — так легко проверить, что браузер показывает свежую версию
 const OPENDOTA = "https://api.opendota.com/api/heroStats";
 const IMG_HOST = "https://cdn.cloudflare.steamstatic.com";
 const RANKS = [["all","Все ранги"],["1","Рекрут"],["2","Страж"],["3","Рыцарь"],["4","Герой"],["5","Легенда"],["6","Властелин"],["7","Божество"],["8","Титан"],["pro","Про-сцена"]];
@@ -366,7 +374,7 @@ const STRATZ_BRACKET = {all:"ALL","1":"HERALD_GUARDIAN","2":"HERALD_GUARDIAN","3
 const STRATZ_LABEL = {ALL:"все ранги",HERALD_GUARDIAN:"Рекрут–Страж",CRUSADER_ARCHON:"Рыцарь–Герой",LEGEND_ANCIENT:"Легенда–Властелин",DIVINE_IMMORTAL:"Божество–Титан"};
 const POS_NAME = {1:"Керри",2:"Мид",3:"Оффлейн",4:"Семи-саппорт",5:"Фулл-саппорт"};
 const TAG_NAME = {p:"урон по башням",g:"глобалка",r:"быстрый Рошан",l:"сильная линия"};
-const DEFAULTS = {rank:"7",minGames:300,hard:true,hardWr:55,tags:{p:true,g:true,r:true,l:true},offrole:false,perPos:5,threatMin:1000,dataUrl:"data",period:"patch",patchDate:"",patchKind:"any"};
+const DEFAULTS = {rank:"7",minGames:300,hard:true,hardWr:55,tags:{p:true,g:true,r:true,l:true},offrole:false,perPos:5,threatMin:1000,autoOrder:true,dataUrl:"data",period:"patch",patchDate:"",patchKind:"any"};
 
 const LS = {
   get(k,d){try{const v=localStorage.getItem("dd_"+k);return v?JSON.parse(v):d}catch(e){return d}},
@@ -393,6 +401,7 @@ if (settings.v < 4){ settings.minGames = 300; settings.v = 4; } // порог д
 settings.dataUrl = "data"; // данные STRATZ всегда лежат в папке data рядом с сайтом
 if (settings.v < 5){ settings.patchDate = ""; settings.v = 5; } // дата патча снова автоматическая (ручную можно выбрать в настройках)
 let state = Object.assign({ours:[],enemy:[],bans:[],mode:"ours",pairPos:"any",recPos:"any",recSort:"total"}, LS.get("draft",{}));
+if (state.firstPick === undefined) state.firstPick = (state.ours.length || state.enemy.length) ? (state.ours.length >= state.enemy.length ? "ours" : "enemy") : null;
 let H = {}, LIST = [], heroStatsMeta = null, SZ = null, SP = null, SD = null, PST = null, LN = null, TD = null, SZKEY = null, SZP = null, LNP = null, PAIR_BETA = 0, LANE_BETA = 0;
 const szCache = {};
 
@@ -482,6 +491,26 @@ function autoPos(h, team){
   return null;
 }
 
+/* ---------- очередь пиков: 2 одной команде, 2 другой, 2, 2, затем 1 и 1 ---------- */
+function pickSeq(first){
+  const a = first, b = first === "ours" ? "enemy" : "ours";
+  return [a,a,b,b,a,a,b,b,a,b];
+}
+// кто пикает следующим (по тому, кто взял первого героя); null — очередь не начата или драфт закончен
+function nextPicker(){
+  if (!state.firstPick) return null;
+  const n = state.ours.length + state.enemy.length;
+  if (n >= 10) return null;
+  let t = pickSeq(state.firstPick)[n];
+  if (state[t].length >= 5) t = t === "ours" ? "enemy" : "ours";
+  return t;
+}
+function advanceMode(){
+  if (settings.autoOrder === false) return;
+  const t = nextPicker();
+  if (t) state.mode = t;
+}
+
 function addHero(id, team, pos){
   const h = H[id]; if (!h) return;
   if (unavailable().has(id)) return;
@@ -490,13 +519,20 @@ function addHero(id, team, pos){
     if (state[team].length >= 5) { flashSearch(team==="ours"?"В нашей команде уже 5 героев":"У врагов уже 5 героев"); return; }
     const p = pos || autoPos(h, team);
     if (p) for (const x of state[team]) if (x.pos === p) x.pos = null;
+    if (!state.ours.length && !state.enemy.length) state.firstPick = team; // первым пикает тот, кому добавили первого героя
     state[team].push({id, pos:p||null});
+    advanceMode();
   }
   save(); renderAll();
 }
 
 function removeHero(team, idx){
-  if (team === "ban") state.bans.splice(idx,1); else state[team].splice(idx,1);
+  if (team === "ban") state.bans.splice(idx,1);
+  else {
+    state[team].splice(idx,1);
+    if (!state.ours.length && !state.enemy.length) state.firstPick = null;
+    else advanceMode();
+  }
   save(); renderAll();
 }
 
@@ -547,6 +583,12 @@ function renderModes(){
   const n = {ours:state.ours.length,enemy:state.enemy.length,ban:state.bans.length};
   const label = {ours:`Добавить нам (${n.ours}/5)`,enemy:`Добавить врагам (${n.enemy}/5)`,ban:`Забанить (${n.ban})`};
   document.querySelectorAll("#modes button").forEach(b=>{b.classList.toggle("on",b.dataset.mode===state.mode);b.textContent=label[b.dataset.mode];});
+  const box = $("#order");
+  if (settings.autoOrder === false){ box.innerHTML = ""; return; }
+  if (!state.firstPick){ box.innerHTML = `<span class="small">Очередь пиков включится сама: выбери, кто пикает первым, и добавь первого героя.</span>`; return; }
+  const seq = pickSeq(state.firstPick), done = n.ours + n.enemy, nxt = nextPicker();
+  const cells = seq.map((t,i)=>`<i class="oc ${t==="ours"?"o":"e"} ${i<done?"done":""} ${i===done?"cur":""}" title="${i+1}-й пик: ${t==="ours"?"мы":"враги"}"></i>`).join("");
+  box.innerHTML = `<span class="small">Очередь:</span><span class="ocs">${cells}</span><span class="small">${nxt ? (nxt==="ours" ? "сейчас пикаем <b class='good'>мы</b>" : "сейчас пикают <b class='bad'>враги</b>") : "драфт собран"}</span>`;
 }
 
 function filtered(){
@@ -1290,6 +1332,7 @@ function fillSettings(){
   $("#setHard").checked = settings.hard;
   $("#setHardWr").value = settings.hardWr;
   $("#setOffrole").checked = settings.offrole;
+  $("#setAutoOrder").checked = settings.autoOrder !== false;
   $("#setPerPos").value = settings.perPos;
   $("#setPeriod").value = settings.period;
   $("#setPatchKind").value = settings.patchKind || "any";
@@ -1304,6 +1347,7 @@ async function onSettings(){
   settings.hard = $("#setHard").checked;
   settings.hardWr = clamp(+$("#setHardWr").value || DEFAULTS.hardWr, 50, 80);
   settings.offrole = $("#setOffrole").checked;
+  settings.autoOrder = $("#setAutoOrder").checked;
   settings.perPos = clamp(Math.round(+$("#setPerPos").value || DEFAULTS.perPos), 1, 10);
   settings.period = $("#setPeriod").value;
   settings.patchKind = $("#setPatchKind").value;
@@ -1344,7 +1388,7 @@ $("#search").addEventListener("keydown", e=>{
 $("#btnSettings").addEventListener("click", ()=>{ const s=$("#settings"); s.hidden=!s.hidden; });
 $("#settings").addEventListener("change", onSettings);
 $("#btnRefresh").addEventListener("click", ()=>{ for (const k in szCache) delete szCache[k]; init(true); });
-$("#btnNew").addEventListener("click", ()=>{ state.ours=[]; state.enemy=[]; state.bans=[]; state.mode="ours"; save(); renderAll(); $("#search").focus(); });
+$("#btnNew").addEventListener("click", ()=>{ state.ours=[]; state.enemy=[]; state.bans=[]; state.mode="ours"; state.firstPick=null; save(); renderAll(); $("#search").focus(); });
 
 fillSettings();
 init(false);
