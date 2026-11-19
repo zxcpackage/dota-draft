@@ -168,7 +168,7 @@ details.notes summary{cursor:pointer;color:var(--muted);font-size:12px;margin-bo
     <input type="number" id="setThreatMin" min="50" step="50">
   </label>
   <div class="set-tags">
-    <label class="row"><input type="checkbox" id="setHard"> Жёсткие контрпики даже с WR ниже 48.8%</label>
+    <label class="row"><input type="checkbox" id="setHard"> Жёсткие контрпики даже с WR ниже 49.2%</label>
     <label>Порог «жёсткого» контрпика: WR против врага, %
       <input type="number" id="setHardWr" min="50" max="70" step="0.5">
     </label>
@@ -379,8 +379,8 @@ kez|12|l|кез
 largo|45||ларго
 `;
 
-const MIN_WR = 48.8; // героев с винрейтом ниже этого не предлагаем
-const APP_VERSION = "19.11 15:50"; // видно в шапке — так легко проверить, что браузер показывает свежую версию
+const MIN_WR = 49.2; // героев с винрейтом ниже этого не предлагаем
+const APP_VERSION = "19.11 15:58"; // видно в шапке — так легко проверить, что браузер показывает свежую версию
 const OPENDOTA = "https://api.opendota.com/api/heroStats";
 const IMG_HOST = "https://cdn.cloudflare.steamstatic.com";
 const RANKS = [["all","Все ранги"],["1","Рекрут"],["2","Страж"],["3","Рыцарь"],["4","Герой"],["5","Легенда"],["6","Властелин"],["7","Божество"],["8","Титан"],["pro","Про-сцена"]];
