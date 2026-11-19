@@ -138,6 +138,9 @@ details.notes summary{cursor:pointer;color:var(--muted);font-size:12px;margin-bo
 #toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
 .lockmsg{background:#3a1d1b;border:1px solid var(--enemy);color:#ffe3df;border-radius:8px;padding:8px 10px;font-size:13px;margin-bottom:8px}
 #recs.locked .rec[data-act]{opacity:.55;cursor:not-allowed}
+.gridsort{display:flex;flex-wrap:wrap;gap:4px;align-items:center;margin-bottom:8px}
+.gridsort button{font-size:11.5px;padding:3px 9px;border-radius:999px;background:#12151b}
+.gridsort button.on{background:var(--gold);color:#1a1405;border-color:var(--gold);font-weight:700}
 .chip.hard{color:#1a1405;background:var(--gold);border-color:var(--gold);font-weight:700}
 .empty-recs{color:var(--muted);font-size:13px;padding:6px 0}
 .err{color:var(--bad);padding:20px;text-align:center}
@@ -229,6 +232,7 @@ details.notes summary{cursor:pointer;color:var(--muted);font-size:12px;margin-bo
       <div class="order" id="order"></div>
       <input id="search" autocomplete="off" placeholder="Поиск: пудж, am, сф, инвок…">
       <div class="hint">Enter — добавить первого героя из списка. Позицию можно поменять кнопками 1–5 у героя.</div>
+      <div class="gridsort" id="gridSort"></div>
       <div id="grid"></div>
     </div>
   </div>
@@ -375,7 +379,7 @@ kez|12|l|кез
 largo|45||ларго
 `;
 
-const APP_VERSION = "19.11 08:50"; // видно в шапке — так легко проверить, что браузер показывает свежую версию
+const APP_VERSION = "19.11 08:55"; // видно в шапке — так легко проверить, что браузер показывает свежую версию
 const OPENDOTA = "https://api.opendota.com/api/heroStats";
 const IMG_HOST = "https://cdn.cloudflare.steamstatic.com";
 const RANKS = [["all","Все ранги"],["1","Рекрут"],["2","Страж"],["3","Рыцарь"],["4","Герой"],["5","Легенда"],["6","Властелин"],["7","Божество"],["8","Титан"],["pro","Про-сцена"]];
@@ -639,15 +643,34 @@ function filtered(){
   return starts.concat(inc);
 }
 
+// Список героев для сетки: по алфавиту или по мете (в целом или на выбранной позиции, как таблицы d2pt)
+function gridList(ctx){
+  const list = filtered();
+  if (state.gridSort !== "meta") return list.map(h=>({h, st:rawStat(h), tier:ctx.tier0[h.id], p:0}));
+  const p = +state.gridPos || 0;
+  if (!p) return list.map(h=>({h, st:rawStat(h), m:metaFor(h,0,ctx), tier:ctx.tier0[h.id], p:0}))
+    .sort((a,b)=>(b.m?b.m.pts:-99)-(a.m?a.m.pts:-99));
+  const pool = list.filter(h=>posOf(h).includes(p)).map(h=>({h, m:metaFor(h,p,ctx), p})).filter(x=>x.m);
+  const tiers = tierMap(pool.map(x=>({id:x.h.id, pts:x.m.pts})));
+  return pool.map(x=>({...x, st:{p:x.m.m, wr:x.m.wr}, tier:tiers[x.h.id]})).sort((a,b)=>b.m.pts-a.m.pts);
+}
+
 function renderGrid(){
-  const un = unavailable(), list = filtered(), ctx = context();
+  const un = unavailable(), ctx = context(), rows = gridList(ctx);
+  // переключатели сортировки
+  const meta = state.gridSort === "meta", gp = +state.gridPos || 0;
+  $("#gridSort").innerHTML = `<span class="small">Герои:</span>` +
+    `<button class="${meta?"":"on"}" data-act="gridsort" data-k="abc">по алфавиту</button><button class="${meta?"on":""}" data-act="gridsort" data-k="meta">по мете</button>` +
+    (meta ? `<span class="small" style="margin-left:6px">позиция:</span>` + [0,1,2,3,4,5].map(k=>`<button class="${gp===k?"on":""}" data-act="gridpos" data-k="${k}">${k?k:"все"}</button>`).join("") : "");
   let firstMarked = false, html = "";
-  for (const h of list){
-    const st = rawStat(h), off = un.has(h.id);
+  for (const r of rows){
+    const h = r.h, st = r.st, off = un.has(h.id);
     let cls = "tile" + (off?" off":"");
     if (!off && !firstMarked && $("#search").value.trim()) { cls += " first"; firstMarked = true; }
     const wr = st.p ? `<span class="${st.wr>=50?"good":"bad"}">${st.wr.toFixed(1)}%</span>` : `<span class="small">нет данных</span>`;
-    html += `<button class="${cls}" data-act="add" data-id="${h.id}" title="${esc(h.name)} — позиции ${posOf(h).join(", ")}. Здесь общий винрейт героя на всех позициях; в советах — винрейт на конкретной позиции.">${pic(h)}<span class="tn">${esc(h.name)}</span><span class="tw">${tierBadge(ctx.tier0[h.id])} ${wr}</span></button>`;
+    const sub = r.p ? ` <span class="small">${fmt(st.p)}</span>` : "";
+    const title = r.p ? `${h.name}: винрейт и игры на поз. ${r.p}` : `${h.name} — позиции ${posOf(h).join(", ")}. Общий винрейт героя на всех позициях; в советах — винрейт на конкретной позиции.`;
+    html += `<button class="${cls}" data-act="add" data-id="${h.id}" title="${esc(title)}">${pic(h)}<span class="tn">${esc(h.name)}</span><span class="tw">${tierBadge(r.tier)} ${wr}${sub}</span></button>`;
   }
   $("#grid").innerHTML = html || `<div class="small">Никого не нашёл</div>`;
 }
@@ -1411,6 +1434,8 @@ document.addEventListener("click", e=>{
   else if (act === "pairpos"){ state.pairPos = b.dataset.k; save(); renderRecs(); }
   else if (act === "recpos"){ state.recPos = b.dataset.k; save(); renderRecs(); }
   else if (act === "recsort"){ state.recSort = b.dataset.k; save(); renderRecs(); }
+  else if (act === "gridsort"){ state.gridSort = b.dataset.k; save(); renderGrid(); }
+  else if (act === "gridpos"){ state.gridPos = +b.dataset.k; save(); renderGrid(); }
   else if (act === "pickpair"){
     if (settings.autoOrder !== false && state.ours.length + 2 > roundLimit()) { toast(blockMsg("ours")); return; }
     addHero(+b.dataset.a, "ours", +b.dataset.pa); addHero(+b.dataset.b, "ours", +b.dataset.pb);
@@ -1426,7 +1451,7 @@ $("#search").addEventListener("input", renderGrid);
 $("#search").addEventListener("keydown", e=>{
   if (e.key === "Enter"){
     const un = unavailable();
-    const h = filtered().find(x=>!un.has(x.id));
+    const r = gridList(context()).find(x=>!un.has(x.h.id)); const h = r && r.h;
     if (h && $("#search").value.trim()){ addHero(h.id, state.mode); $("#search").value=""; renderGrid(); }
   } else if (e.key === "Escape"){ $("#search").value=""; renderGrid(); }
 });
