@@ -385,7 +385,7 @@ largo|45||ларго
 `;
 
 const MIN_WR = 49.2; // героев с винрейтом ниже этого не предлагаем
-const APP_VERSION = "19.11 16:10"; // видно в шапке — так легко проверить, что браузер показывает свежую версию
+const APP_VERSION = "19.11 16:15"; // видно в шапке — так легко проверить, что браузер показывает свежую версию
 const OPENDOTA = "https://api.opendota.com/api/heroStats";
 const IMG_HOST = "https://cdn.cloudflare.steamstatic.com";
 const RANKS = [["all","Все ранги"],["1","Рекрут"],["2","Страж"],["3","Рыцарь"],["4","Герой"],["5","Легенда"],["6","Властелин"],["7","Божество"],["8","Титан"],["pro","Про-сцена"]];
@@ -1218,7 +1218,7 @@ function renderAnalysis(ctx){
   // ссылки на сборки d2pt — только для наших 5 героев и только в конце драфта, чтобы не мешать во время пиков
   const links = state.ours.slice().sort((x,y)=>(x.pos||9)-(y.pos||9)).map(x=>{
     const h = H[x.id]; if (!h) return "";
-    return `<a href="https://dota2protracker.com/hero/${encodeURIComponent(h.name)}" target="_blank" rel="noopener" title="Открыть сборки ${esc(h.name)} на d2pt">${pic(h)}<span>${esc(h.name)}${x.pos?` <span class="small">поз. ${x.pos}</span>`:""}</span></a>`;
+    return `<a href="https://dota2protracker.com/m/hero/${encodeURIComponent(h.name)}" target="_blank" rel="noopener" title="Открыть сборки ${esc(h.name)} на d2pt">${pic(h)}<span>${esc(h.name)}${x.pos?` <span class="small">поз. ${x.pos}</span>`:""}</span></a>`;
   }).join("");
   const builds = links ? `<div class="an-builds"><h3 style="margin:0">Билды на d2pt ↗</h3><div class="bls">${links}</div></div>` : "";
   const notes = [];
