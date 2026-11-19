@@ -356,7 +356,7 @@ kez|12|l|кез
 largo|45||ларго
 `;
 
-const APP_VERSION = "19.11 08:00"; // видно в шапке — так легко проверить, что браузер показывает свежую версию
+const APP_VERSION = "19.11 08:05"; // видно в шапке — так легко проверить, что браузер показывает свежую версию
 const OPENDOTA = "https://api.opendota.com/api/heroStats";
 const IMG_HOST = "https://cdn.cloudflare.steamstatic.com";
 const RANKS = [["all","Все ранги"],["1","Рекрут"],["2","Страж"],["3","Рыцарь"],["4","Герой"],["5","Легенда"],["6","Властелин"],["7","Божество"],["8","Титан"],["pro","Про-сцена"]];
@@ -514,7 +514,7 @@ function flashSearch(msg){
 /* ---------- рендер ---------- */
 function renderSlots(team){
   const box = $("#"+team+"Slots"), list = state[team];
-  let html = "";
+  let html = "", enemyP = null;
   for (let i=0;i<5;i++){
     const s = list[i];
     if (!s) { html += `<div class="slot empty">пусто</div>`; continue; }
@@ -523,7 +523,8 @@ function renderSlots(team){
     for (let p=1;p<=5;p++) chips += `<button class="${s.pos===p?"on":""}" title="${POS_NAME[p]}" data-act="pos" data-team="${team}" data-i="${i}" data-p="${p}">${p}</button>`;
     let sub = "";
     if (team === "enemy" && !s.pos){
-      const pr = posProb(h), best = pr.indexOf(Math.max(...pr));
+      // та же вероятность, что и в расчётах: с учётом позиций, уже занятых остальными врагами
+      const pr = (enemyP || (enemyP = teamProbs("enemy")))[i], best = pr.indexOf(Math.max(...pr));
       sub = `<div class="sub">обычно поз. ${best+1} · ${Math.round(pr[best]*100)}%</div>`;
     }
     html += `<div class="slot">${pic(h)}<div class="nm" title="${esc(h.name)}">${esc(h.name)}${sub}</div><div class="pos">${chips}</div><button class="x" title="Убрать" data-act="rm" data-team="${team}" data-i="${i}">✕</button></div>`;
