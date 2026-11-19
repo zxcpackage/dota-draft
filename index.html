@@ -358,7 +358,7 @@ kez|12|l|кез
 largo|45||ларго
 `;
 
-const APP_VERSION = "19.11 08:30"; // видно в шапке — так легко проверить, что браузер показывает свежую версию
+const APP_VERSION = "19.11 08:35"; // видно в шапке — так легко проверить, что браузер показывает свежую версию
 const OPENDOTA = "https://api.opendota.com/api/heroStats";
 const IMG_HOST = "https://cdn.cloudflare.steamstatic.com";
 const RANKS = [["all","Все ранги"],["1","Рекрут"],["2","Страж"],["3","Рыцарь"],["4","Герой"],["5","Легенда"],["6","Властелин"],["7","Божество"],["8","Титан"],["pro","Про-сцена"]];
@@ -1076,17 +1076,11 @@ function analyzeDraft(ctx){
       return n >= 5 ? SIG(DRAFT_K*s)*100 : null;
     };
     res.phases.push({name:`Быстрая игра (до ${mins[i25]} мин)`, val:phase(i0, i25)});
-    if (tail >= 45){
-      // STRATZ отдал минуты дальше 45-й — можно отделить настоящий лейт
-      const i45 = at(45);
-      res.phases.push({name:`Мид-гейм (${mins[i25]}–${mins[i45]} мин)`, val:phase(i25, i45)});
-      res.phases.push({name:`Лейт (${mins[i45]}+ мин)`, val:phase(i45, null)});
-    } else {
-      res.phases.push({name:`Игры ${mins[i25]}–${tail} мин`, val:phase(i25, iL)});
-      res.phases.push({name:`Игры дольше ${tail} мин (это ~2/3 всех матчей, отдельного лейта в данных STRATZ нет)`, val:phase(iL, null)});
-    }
+    // долгую игру не показываем: в конце всё решает исполнение, а данных STRATZ дальше 35-й минуты нет
+    const iM = tail >= 45 ? at(45) : iL;
+    res.phases.push({name:`Мид-гейм (${mins[i25]}–${mins[iM]} мин)`, val:phase(i25, iM)});
   } else {
-    res.phases.push({name:"Короткая игра", val:null},{name:"Мид-гейм", val:null},{name:"Долгая игра", val:null});
+    res.phases.push({name:"Быстрая игра", val:null},{name:"Мид-гейм", val:null});
   }
   return res;
 }
