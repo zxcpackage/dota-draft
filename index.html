@@ -125,7 +125,11 @@ details.notes summary{cursor:pointer;color:var(--muted);font-size:12px;margin-bo
 .sorts button:disabled{opacity:.4;cursor:not-allowed}
 .sub-h{margin:6px 0 4px}
 .order{display:flex;align-items:center;gap:8px;margin:-2px 0 8px;flex-wrap:wrap}
-.ocs{display:flex;gap:3px}
+.ocs{display:flex;gap:10px;flex-wrap:wrap}
+.rnd{display:flex;gap:3px;align-items:center;padding:2px 5px;border-radius:6px}
+.rnd.now{background:#22262f}
+.rnd .small{margin-right:2px}
+.rnd .vsd{width:4px}
 .oc{display:inline-block;width:16px;height:10px;border-radius:3px;border:1px solid}
 .oc.o{border-color:var(--ours)}.oc.e{border-color:var(--enemy)}
 .oc.o.done{background:var(--ours)}.oc.e.done{background:var(--enemy)}
@@ -170,7 +174,7 @@ details.notes summary{cursor:pointer;color:var(--muted);font-size:12px;margin-bo
     <label class="row"><input type="checkbox" data-tag="l"> сильной линией</label>
   </div>
   <div class="set-tags">
-    <label class="row"><input type="checkbox" id="setAutoOrder"> Сам переключать «нам / врагам» по очереди пиков (2-2-2-2-1-1)</label>
+    <label class="row"><input type="checkbox" id="setAutoOrder"> Сам переключать «нам / врагам» по раундам (2 + 2, 2 + 2, 1 + 1)</label>
     <label class="row"><input type="checkbox" id="setOffrole"> Предлагать героев не на их обычных позициях</label>
     <label>Советов на каждую позицию
       <input type="number" id="setPerPos" min="1" max="8">
@@ -366,7 +370,7 @@ kez|12|l|кез
 largo|45||ларго
 `;
 
-const APP_VERSION = "19.11 08:40"; // видно в шапке — так легко проверить, что браузер показывает свежую версию
+const APP_VERSION = "19.11 08:45"; // видно в шапке — так легко проверить, что браузер показывает свежую версию
 const OPENDOTA = "https://api.opendota.com/api/heroStats";
 const IMG_HOST = "https://cdn.cloudflare.steamstatic.com";
 const RANKS = [["all","Все ранги"],["1","Рекрут"],["2","Страж"],["3","Рыцарь"],["4","Герой"],["5","Легенда"],["6","Властелин"],["7","Божество"],["8","Титан"],["pro","Про-сцена"]];
@@ -401,7 +405,6 @@ if (settings.v < 4){ settings.minGames = 300; settings.v = 4; } // порог д
 settings.dataUrl = "data"; // данные STRATZ всегда лежат в папке data рядом с сайтом
 if (settings.v < 5){ settings.patchDate = ""; settings.v = 5; } // дата патча снова автоматическая (ручную можно выбрать в настройках)
 let state = Object.assign({ours:[],enemy:[],bans:[],mode:"ours",pairPos:"any",recPos:"any",recSort:"total"}, LS.get("draft",{}));
-if (state.firstPick === undefined) state.firstPick = (state.ours.length || state.enemy.length) ? (state.ours.length >= state.enemy.length ? "ours" : "enemy") : null;
 let H = {}, LIST = [], heroStatsMeta = null, SZ = null, SP = null, SD = null, PST = null, LN = null, TD = null, SZKEY = null, SZP = null, LNP = null, PAIR_BETA = 0, LANE_BETA = 0;
 const szCache = {};
 
@@ -491,24 +494,27 @@ function autoPos(h, team){
   return null;
 }
 
-/* ---------- очередь пиков: 2 одной команде, 2 другой, 2, 2, затем 1 и 1 ---------- */
-function pickSeq(first){
-  const a = first, b = first === "ours" ? "enemy" : "ours";
-  return [a,a,b,b,a,a,b,b,a,b];
+/* ---------- раунды драфта в рейтинге: обе команды пикают одновременно, 2 + 2, 2 + 2, 1 + 1 ---------- */
+// Враги видны только после таймера раунда, поэтому в каждом раунде сначала добавляем своих, потом вражеских.
+const ROUNDS = [2,2,1];
+function draftRound(){
+  let cum = 0;
+  for (let r=0;r<ROUNDS.length;r++){
+    cum += ROUNDS[r];
+    if (state.ours.length < cum) return {r, team:"ours", need:cum-state.ours.length};
+    if (state.enemy.length < cum) return {r, team:"enemy", need:cum-state.enemy.length};
+  }
+  return null;
 }
-// кто пикает следующим (по тому, кто взял первого героя); null — очередь не начата или драфт закончен
-function nextPicker(){
-  if (!state.firstPick) return null;
-  const n = state.ours.length + state.enemy.length;
-  if (n >= 10) return null;
-  let t = pickSeq(state.firstPick)[n];
-  if (state[t].length >= 5) t = t === "ours" ? "enemy" : "ours";
-  return t;
-}
+// Если режим выбран руками (например, сначала вводишь врагов), он держится, пока эта команда не доберёт свой раунд.
+function nextCum(n){ let c = 0; for (const k of ROUNDS){ c += k; if (c > n) return c; } return 5; }
 function advanceMode(){
-  if (settings.autoOrder === false) return;
-  const t = nextPicker();
-  if (t) state.mode = t;
+  if (settings.autoOrder === false || state.mode === "ban") return;
+  const m = state.manual;
+  if (m && (m.team === "ours" || m.team === "enemy") && state[m.team].length < m.until){ state.mode = m.team; return; }
+  state.manual = null;
+  const d = draftRound();
+  if (d) state.mode = d.team;
 }
 
 function addHero(id, team, pos){
@@ -519,7 +525,6 @@ function addHero(id, team, pos){
     if (state[team].length >= 5) { flashSearch(team==="ours"?"В нашей команде уже 5 героев":"У врагов уже 5 героев"); return; }
     const p = pos || autoPos(h, team);
     if (p) for (const x of state[team]) if (x.pos === p) x.pos = null;
-    if (!state.ours.length && !state.enemy.length) state.firstPick = team; // первым пикает тот, кому добавили первого героя
     state[team].push({id, pos:p||null});
     advanceMode();
   }
@@ -530,8 +535,7 @@ function removeHero(team, idx){
   if (team === "ban") state.bans.splice(idx,1);
   else {
     state[team].splice(idx,1);
-    if (!state.ours.length && !state.enemy.length) state.firstPick = null;
-    else advanceMode();
+    advanceMode();
   }
   save(); renderAll();
 }
@@ -585,10 +589,21 @@ function renderModes(){
   document.querySelectorAll("#modes button").forEach(b=>{b.classList.toggle("on",b.dataset.mode===state.mode);b.textContent=label[b.dataset.mode];});
   const box = $("#order");
   if (settings.autoOrder === false){ box.innerHTML = ""; return; }
-  if (!state.firstPick){ box.innerHTML = `<span class="small">Очередь пиков включится сама: выбери, кто пикает первым, и добавь первого героя.</span>`; return; }
-  const seq = pickSeq(state.firstPick), done = n.ours + n.enemy, nxt = nextPicker();
-  const cells = seq.map((t,i)=>`<i class="oc ${t==="ours"?"o":"e"} ${i<done?"done":""} ${i===done?"cur":""}" title="${i+1}-й пик: ${t==="ours"?"мы":"враги"}"></i>`).join("");
-  box.innerHTML = `<span class="small">Очередь:</span><span class="ocs">${cells}</span><span class="small">${nxt ? (nxt==="ours" ? "сейчас пикаем <b class='good'>мы</b>" : "сейчас пикают <b class='bad'>враги</b>") : "драфт собран"}</span>`;
+  const d = draftRound();
+  let cum = 0, html = "";
+  ROUNDS.forEach((k,r)=>{
+    const cell = (team, i) => {
+      const have = state[team].length, idx = cum + i;
+      const cur = d && d.r === r && d.team === team && idx === have;
+      return `<i class="oc ${team==="ours"?"o":"e"} ${idx < have ? "done" : ""} ${cur ? "cur" : ""}"></i>`;
+    };
+    html += `<span class="rnd ${d && d.r===r ? "now" : ""}"><span class="small">${r+1}</span>${[...Array(k)].map((_,i)=>cell("ours",i)).join("")}<span class="vsd"></span>${[...Array(k)].map((_,i)=>cell("enemy",i)).join("")}</span>`;
+    cum += k;
+  });
+  const hint = !d ? "драфт собран"
+    : d.team === "ours" ? `раунд ${d.r+1}: добавь <b class="good">наших</b> (${d.need})`
+    : `раунд ${d.r+1}: добавь <b class="bad">вражеских</b>, когда откроются (${d.need})`;
+  box.innerHTML = `<span class="ocs">${html}</span><span class="small">${hint}</span>`;
 }
 
 function filtered(){
@@ -1375,7 +1390,9 @@ document.addEventListener("click", e=>{
 });
 $("#modes").addEventListener("click", e=>{
   const b = e.target.closest("button"); if (!b) return;
-  state.mode = b.dataset.mode; save(); renderModes(); $("#search").focus();
+  state.mode = b.dataset.mode;
+  state.manual = (state.mode === "ours" || state.mode === "enemy") ? {team:state.mode, until:nextCum(state[state.mode].length)} : null;
+  save(); renderModes(); $("#search").focus();
 });
 $("#search").addEventListener("input", renderGrid);
 $("#search").addEventListener("keydown", e=>{
@@ -1388,7 +1405,7 @@ $("#search").addEventListener("keydown", e=>{
 $("#btnSettings").addEventListener("click", ()=>{ const s=$("#settings"); s.hidden=!s.hidden; });
 $("#settings").addEventListener("change", onSettings);
 $("#btnRefresh").addEventListener("click", ()=>{ for (const k in szCache) delete szCache[k]; init(true); });
-$("#btnNew").addEventListener("click", ()=>{ state.ours=[]; state.enemy=[]; state.bans=[]; state.mode="ours"; state.firstPick=null; save(); renderAll(); $("#search").focus(); });
+$("#btnNew").addEventListener("click", ()=>{ state.ours=[]; state.enemy=[]; state.bans=[]; state.mode="ours"; state.manual=null; save(); renderAll(); $("#search").focus(); });
 
 fillSettings();
 init(false);
