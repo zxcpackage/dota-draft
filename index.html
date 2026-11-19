@@ -168,7 +168,7 @@ details.notes summary{cursor:pointer;color:var(--muted);font-size:12px;margin-bo
     <input type="number" id="setThreatMin" min="50" step="50">
   </label>
   <div class="set-tags">
-    <label class="row"><input type="checkbox" id="setHard"> Жёсткие контрпики даже с WR ниже 50%</label>
+    <label class="row"><input type="checkbox" id="setHard"> Жёсткие контрпики даже с WR ниже 48.8%</label>
     <label>Порог «жёсткого» контрпика: WR против врага, %
       <input type="number" id="setHardWr" min="50" max="70" step="0.5">
     </label>
@@ -379,7 +379,8 @@ kez|12|l|кез
 largo|45||ларго
 `;
 
-const APP_VERSION = "19.11 08:55"; // видно в шапке — так легко проверить, что браузер показывает свежую версию
+const MIN_WR = 48.8; // героев с винрейтом ниже этого не предлагаем
+const APP_VERSION = "19.11 15:50"; // видно в шапке — так легко проверить, что браузер показывает свежую версию
 const OPENDOTA = "https://api.opendota.com/api/heroStats";
 const IMG_HOST = "https://cdn.cloudflare.steamstatic.com";
 const RANKS = [["all","Все ранги"],["1","Рекрут"],["2","Страж"],["3","Рыцарь"],["4","Герой"],["5","Легенда"],["6","Властелин"],["7","Божество"],["8","Титан"],["pro","Про-сцена"]];
@@ -737,7 +738,7 @@ function score(h, p, ctx, tier){
   const wr = mt.wr, base = ctx.st[h.id] ? ctx.st[h.id].wr : wr;
   let pts = mt.pts;
   const why = [], hard = [];
-  why.push({t:mt.positional ? `WR ${wr.toFixed(1)}% на поз. ${p}` : `WR ${wr.toFixed(1)}% (общий, без разбивки по позициям)`,k:wr>=50?"good":"bad"});
+  why.push({t:mt.positional ? `WR ${wr.toFixed(1)}% на поз. ${p}` : `WR ${wr.toFixed(1)}% (общий, без разбивки по позициям)`,k:wr>=50?"good":(wr>=MIN_WR?"tag":"bad")});
   why.push({t:`${fmt(mt.m)} игр`,k:""});
   if (ctx.sz){
     state.enemy.forEach((e,k)=>{
@@ -778,7 +779,7 @@ function score(h, p, ctx, tier){
   }
   if (state.ours.length >= 2 && ctx.ourComp.ctrl < 1.5 && roles(h).includes("Disabler")){ pts += 0.4; why.push({t:"контроль (у нас его мало)",k:"tag"}); }
   if (posOf(h)[0] === p) pts += 0.5;
-  const ok = wr >= 50 || (settings.hard && hard.length > 0);
+  const ok = wr >= MIN_WR || (settings.hard && hard.length > 0);
   if (!ok) return null;
   return {h,p,pts,wr,why,hard,tier};
 }
@@ -814,7 +815,7 @@ function renderRecs(){
   if (!ctx.sz) notes.push("Контрпики и синергия пока выключены: нет данных STRATZ.");
   else notes.push(`Пары героев: STRATZ (${STRATZ_LABEL[SZKEY]||SZKEY}), учитываю только пары от ${fmt(settings.minGames)} игр.` + (PAIR_BETA > 0.01 ? ` Текущая неделя STRATZ набрала ${Math.round((1-PAIR_BETA)*100)}% выборки — недостающее берётся из прошлой недели.` : ""));
   if (settings.rank === "pro") notes.push("На про-сцене мало игр, винрейты шумные. Для пабов лучше выбрать свой ранг.");
-  notes.push(settings.hard ? `Герои с WR ниже 50% скрыты, кроме жёстких контрпиков (от ${settings.hardWr}% против врага).` : "Герои с WR ниже 50% скрыты.");
+  notes.push(settings.hard ? `Герои с WR ниже ${MIN_WR}% скрыты, кроме жёстких контрпиков (от ${settings.hardWr}% против врага).` : `Герои с WR ниже ${MIN_WR}% скрыты.`);
   $("#notes").innerHTML = `<details class="notes"><summary>Откуда данные и как считается</summary>${notes.map(n=>`<div class="note">${esc(n)}</div>`).join("")}</details>`;
 
   if (state.ours.length >= 5){
@@ -875,7 +876,7 @@ function renderRecs(){
     sortBtn("ctr","против врагов",canCtr, ctx.sz ? "Сначала добавь хотя бы одного врага" : "Нужны данные STRATZ") + `</div>`;
   const recWithExtra = r => { const c = {...r, why: r.extra ? [r.extra, ...r.why] : r.why}; return recCard(c); };
   html += list.length ? list.map(recWithExtra).join("")
-    : `<div class="empty-recs">${sort==="syn" ? "Нет героев с хорошей синергией с нашими на этой позиции." : sort==="ctr" ? "Нет героев, которые заметно контрят врагов на этой позиции." : "Нет героев с WR от 50% на эту позицию."}</div>`;
+    : `<div class="empty-recs">${sort==="syn" ? "Нет героев с хорошей синергией с нашими на этой позиции." : sort==="ctr" ? "Нет героев, которые заметно контрят врагов на этой позиции." : `Нет героев с WR от ${MIN_WR}% на эту позицию.`}</div>`;
 
   // ---------- пары — только для самого первого двойного пика ----------
   if (state.ours.length === 0 && open.length >= 2){
@@ -954,7 +955,7 @@ function likelyEnemyPicks(ctx){
     const arr = [];
     for (const h of LIST){
       if (un.has(h.id) || posProb(h)[p-1] < 0.15) continue;
-      const m = metaFor(h,p,ctx); if (!m || m.wr < 49) continue;
+      const m = metaFor(h,p,ctx); if (!m || m.wr < MIN_WR) continue;
       const base = ctx.st[h.id] ? ctx.st[h.id].wr : 50;
       let s = m.pts;
       if (ctx.sz){
@@ -1002,7 +1003,7 @@ function enemyThreats(ctx){
 }
 function threatCard(t, ctx, open){
   const chips = t.hits.sort((a,b)=>a.wr-b.wr).map(x=>`<span class="chip bad">${esc(x.n)} выигрывает только ${x.wr.toFixed(1)}% (${fmt(x.m)} игр)</span>`);
-  const mine = open.find(p=>posOf(t.h).includes(p) && (()=>{ const m = metaFor(t.h,p,ctx); return m && m.wr >= 50; })());
+  const mine = open.find(p=>posOf(t.h).includes(p) && (()=>{ const m = metaFor(t.h,p,ctx); return m && m.wr >= MIN_WR; })());
   if (mine) chips.push(`<span class="chip good">можно забрать себе на поз. ${mine}</span>`);
   return `<div class="rec threat">${pic(t.h)}<div class="body"><div class="top"><span class="rn">${esc(t.h.name)}</span><span class="rp">у врага обычно поз. ${t.p}</span></div><div class="chips">${chips.join("")}</div></div></div>`;
 }
