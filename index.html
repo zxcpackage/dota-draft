@@ -178,14 +178,18 @@ details.notes summary{cursor:pointer;color:var(--muted);font-size:12px;margin-bo
       <option value="30">30 дней</option>
     </select>
   </label>
-  <label>Новым патчем считать (определяется автоматически)
+  <label>Дата патча (для «С начала патча»)
+    <select id="setPatchMode">
+      <option value="auto">Автоматически</option>
+      <option value="manual">Выбрать вручную</option>
+    </select>
+    <input type="date" id="setPatchDate" hidden>
+  </label>
+  <label id="patchKindBox">Новым патчем считать
     <select id="setPatchKind">
       <option value="any">любой, включая буквенные (7.42a, 7.42b…)</option>
       <option value="major">только крупные (7.42, 7.43…)</option>
     </select>
-  </label>
-  <label>Дата патча вручную — только если автоматика ошиблась (пусто = авто)
-    <input type="date" id="setPatchDate">
   </label>
 </section>
 
@@ -353,7 +357,7 @@ kez|12|l|кез
 largo|45||ларго
 `;
 
-const APP_VERSION = "19.11 08:15"; // видно в шапке — так легко проверить, что браузер показывает свежую версию
+const APP_VERSION = "19.11 08:20"; // видно в шапке — так легко проверить, что браузер показывает свежую версию
 const OPENDOTA = "https://api.opendota.com/api/heroStats";
 const IMG_HOST = "https://cdn.cloudflare.steamstatic.com";
 const RANKS = [["all","Все ранги"],["1","Рекрут"],["2","Страж"],["3","Рыцарь"],["4","Герой"],["5","Легенда"],["6","Властелин"],["7","Божество"],["8","Титан"],["pro","Про-сцена"]];
@@ -386,6 +390,7 @@ if ((settings.v||1) < 2){ settings.threatMin = 1000; settings.v = 2; }
 if (settings.v < 3){ settings.patchDate = ""; settings.patchKind = "any"; settings.v = 3; } // дата патча теперь определяется сама
 if (settings.v < 4){ settings.minGames = 300; settings.v = 4; } // порог для пар: 300 игр (точность винрейта примерно ±3%)
 settings.dataUrl = "data"; // данные STRATZ всегда лежат в папке data рядом с сайтом
+if (settings.v < 5){ settings.patchDate = ""; settings.v = 5; } // дата патча снова автоматическая (ручную можно выбрать в настройках)
 let state = Object.assign({ours:[],enemy:[],bans:[],mode:"ours",pairPos:"any",recPos:"any",recSort:"total"}, LS.get("draft",{}));
 let H = {}, LIST = [], heroStatsMeta = null, SZ = null, SP = null, SD = null, PST = null, LN = null, TD = null, SZKEY = null, SZP = null, LNP = null, PAIR_BETA = 0, LANE_BETA = 0;
 const szCache = {};
@@ -1125,7 +1130,26 @@ function renderCompCard(){
   const el = $("#compCard"); el.hidden = !html; el.innerHTML = html;
 }
 
+// дата автоматического патча в виде ГГГГ-ММ-ДД (для поля «вручную», чтобы было от чего отталкиваться)
+function autoPatchDateStr(){
+  const saved = settings.patchDate; settings.patchDate = "";
+  const ps = patchStart(); settings.patchDate = saved;
+  return new Date(ps.ts*1000).toISOString().slice(0,10);
+}
+function renderPatchControls(){
+  const manual = !!settings.patchDate;
+  const saved = settings.patchDate; settings.patchDate = "";
+  const ps = patchStart(); settings.patchDate = saved;
+  const d = new Date(ps.ts*1000).toLocaleDateString("ru-RU",{day:"2-digit",month:"2-digit"});
+  $("#setPatchMode").options[0].textContent = `Автоматически — ${ps.name} от ${d}`;
+  $("#setPatchMode").value = manual ? "manual" : "auto";
+  $("#setPatchDate").hidden = !manual;
+  if (manual) $("#setPatchDate").value = settings.patchDate;
+  $("#patchKindBox").hidden = manual;
+}
+
 function renderAll(){
+  renderPatchControls();
   renderCompCard();
   renderSlots("ours"); renderSlots("enemy"); renderBans(); renderModes(); renderGrid(); renderRecs(); renderStatus();
 }
@@ -1264,8 +1288,8 @@ function fillSettings(){
   $("#setOffrole").checked = settings.offrole;
   $("#setPerPos").value = settings.perPos;
   $("#setPeriod").value = settings.period;
-  $("#setPatchDate").value = settings.patchDate || "";
   $("#setPatchKind").value = settings.patchKind || "any";
+  renderPatchControls();
   document.querySelectorAll("[data-tag]").forEach(c=>c.checked=!!settings.tags[c.dataset.tag]);
 }
 async function onSettings(){
@@ -1278,8 +1302,9 @@ async function onSettings(){
   settings.offrole = $("#setOffrole").checked;
   settings.perPos = clamp(Math.round(+$("#setPerPos").value || DEFAULTS.perPos), 1, 10);
   settings.period = $("#setPeriod").value;
-  settings.patchDate = $("#setPatchDate").value || "";
   settings.patchKind = $("#setPatchKind").value;
+  if ($("#setPatchMode").value === "auto") settings.patchDate = "";
+  else settings.patchDate = $("#setPatchDate").value || autoPatchDateStr();
   document.querySelectorAll("[data-tag]").forEach(c=>settings.tags[c.dataset.tag]=c.checked);
   save();
   buildPeriod();
