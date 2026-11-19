@@ -286,10 +286,24 @@ try {
 }
 
 // ---------- винрейт по длительности матча ----------
+// По умолчанию STRATZ отдаёт минуты только до 35-й. Если у запроса есть аргумент maxTime — просим до 75-й,
+// чтобы отделить настоящий лейт (45+ мин). Аргументы смотрим через описание схемы API.
+let timeArgs = "";
+try {
+  const root = await gql({}, `{ __schema { queryType { fields { name type { name } } } } }`);
+  const hsType = root?.__schema?.queryType?.fields?.find((f) => f.name === "heroStats")?.type?.name || "HeroStatsQuery";
+  const intro = await gql({}, `{ __type(name: "${hsType}") { fields { name args { name } } } }`);
+  const args = (intro?.__type?.fields?.find((f) => f.name === "stats")?.args || []).map((a) => a.name);
+  if (args.includes("maxTime")) timeArgs += ", maxTime: 75";
+  if (args.includes("minTime")) timeArgs += ", minTime: 0";
+  note("time", { statsArgs: args });
+} catch (e) {
+  note("time", { argsError: e.message.slice(0, 300) });
+}
 const TIME_QUERY = `
 query Time($brackets: [RankBracketBasicEnum]) {
   heroStats {
-    stats(bracketBasicIds: $brackets, groupByTime: true) {
+    stats(bracketBasicIds: $brackets, groupByTime: true${timeArgs}) {
       heroId
       time
       matchCount
