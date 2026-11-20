@@ -1,5 +1,5 @@
 {
-  "started": "2026-11-19T12:33:34.095Z",
+  "started": "2026-11-20T01:46:32.276Z",
   "sections": {
     "matchups": {
       "ALL": "fresh",
@@ -10,23 +10,23 @@
     },
     "daily": {
       "ALL": {
-        "days": 30,
+        "days": 29,
         "heroes": 127
       },
       "HERALD_GUARDIAN": {
-        "days": 30,
+        "days": 29,
         "heroes": 127
       },
       "CRUSADER_ARCHON": {
-        "days": 30,
+        "days": 29,
         "heroes": 127
       },
       "LEGEND_ANCIENT": {
-        "days": 30,
+        "days": 29,
         "heroes": 127
       },
       "DIVINE_IMMORTAL": {
-        "days": 30,
+        "days": 29,
         "heroes": 127
       }
     },
@@ -91,5 +91,5 @@
       "DIVINE_IMMORTAL": "fresh"
     }
   },
-  "finished": "2026-11-19T12:34:13.702Z"
+  "finished": "2026-11-20T01:47:05.478Z"
 }
