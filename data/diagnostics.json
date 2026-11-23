@@ -1,25 +1,25 @@
 {
-  "started": "2026-11-22T00:20:49.105Z",
+  "started": "2026-11-23T00:54:08.222Z",
   "sections": {
     "daily": {
       "ALL": {
-        "days": 29,
+        "days": 30,
         "heroes": 127
       },
       "HERALD_GUARDIAN": {
-        "days": 29,
+        "days": 30,
         "heroes": 127
       },
       "CRUSADER_ARCHON": {
-        "days": 29,
+        "days": 30,
         "heroes": 127
       },
       "LEGEND_ANCIENT": {
-        "days": 29,
+        "days": 30,
         "heroes": 127
       },
       "DIVINE_IMMORTAL": {
-        "days": 29,
+        "days": 30,
         "heroes": 127
       }
     },
@@ -36,43 +36,43 @@
         "maxTime"
       ],
       "ALL": {
-        "rows": 9652,
-        "heroes": 127,
+        "rows": 0,
+        "heroes": 0,
         "minutes": [
-          0,
-          75
+          null,
+          null
         ]
       },
       "HERALD_GUARDIAN": {
-        "rows": 9652,
-        "heroes": 127,
+        "rows": 0,
+        "heroes": 0,
         "minutes": [
-          0,
-          75
+          null,
+          null
         ]
       },
       "CRUSADER_ARCHON": {
-        "rows": 9652,
-        "heroes": 127,
+        "rows": 0,
+        "heroes": 0,
         "minutes": [
-          0,
-          75
+          null,
+          null
         ]
       },
       "LEGEND_ANCIENT": {
-        "rows": 9652,
-        "heroes": 127,
+        "rows": 0,
+        "heroes": 0,
         "minutes": [
-          0,
-          75
+          null,
+          null
         ]
       },
       "DIVINE_IMMORTAL": {
-        "rows": 9652,
-        "heroes": 127,
+        "rows": 0,
+        "heroes": 0,
         "minutes": [
-          0,
-          75
+          null,
+          null
         ]
       }
     },
@@ -84,5 +84,5 @@
       "DIVINE_IMMORTAL": "fresh"
     }
   },
-  "finished": "2026-11-22T00:25:44.269Z"
+  "finished": "2026-11-23T01:07:21.188Z"
 }
