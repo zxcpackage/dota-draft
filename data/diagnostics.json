@@ -1,27 +1,12 @@
 {
-  "started": "2026-11-24T04:47:58.082Z",
+  "started": "2026-11-25T03:33:36.372Z",
   "sections": {
     "matchups": {
-      "ALL": {
-        "heroes": 127,
-        "failed": 0
-      },
-      "HERALD_GUARDIAN": {
-        "heroes": 127,
-        "failed": 0
-      },
-      "CRUSADER_ARCHON": {
-        "heroes": 127,
-        "failed": 0
-      },
-      "LEGEND_ANCIENT": {
-        "heroes": 127,
-        "failed": 0
-      },
-      "DIVINE_IMMORTAL": {
-        "heroes": 127,
-        "failed": 0
-      }
+      "ALL": "fresh",
+      "HERALD_GUARDIAN": "fresh",
+      "CRUSADER_ARCHON": "fresh",
+      "LEGEND_ANCIENT": "fresh",
+      "DIVINE_IMMORTAL": "fresh"
     },
     "daily": {
       "ALL": {
@@ -99,12 +84,27 @@
       }
     },
     "lane": {
-      "ALL": "fresh",
-      "HERALD_GUARDIAN": "fresh",
-      "CRUSADER_ARCHON": "fresh",
-      "LEGEND_ANCIENT": "fresh",
-      "DIVINE_IMMORTAL": "fresh"
+      "ALL": {
+        "heroes": 126,
+        "failed": 0
+      },
+      "HERALD_GUARDIAN": {
+        "heroes": 127,
+        "failed": 0
+      },
+      "CRUSADER_ARCHON": {
+        "heroes": 127,
+        "failed": 0
+      },
+      "LEGEND_ANCIENT": {
+        "heroes": 127,
+        "failed": 0
+      },
+      "DIVINE_IMMORTAL": {
+        "heroes": 127,
+        "failed": 0
+      }
     }
   },
-  "finished": "2026-11-24T05:05:28.850Z"
+  "finished": "2026-11-25T03:41:54.586Z"
 }
